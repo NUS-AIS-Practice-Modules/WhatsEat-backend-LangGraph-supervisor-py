@@ -1,0 +1,214 @@
+"""
+RAG代理用于处理Places API数据,构建知识图谱并存储向量
+"""
+import json
+import os
+from typing import Dict, List
+from pathlib import Path
+import logging
+
+from dotenv import load_dotenv
+from neo4j import GraphDatabase
+from sentence_transformers import SentenceTransformer
+import pinecone
+
+# 加载环境变量
+load_dotenv()
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class RAGAgent:
+    def __init__(self):
+        # Neo4j配置
+        self.neo4j_uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+        self.neo4j_user = os.getenv("NEO4J_USER", "neo4j")
+        self.neo4j_password = os.getenv("NEO4J_PASSWORD")
+        self.neo4j_driver = None
+
+        # Pinecone配置
+        self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
+        self.pinecone_environment = os.getenv("PINECONE_ENVIRONMENT")
+        self.index_name = "places-index"
+        
+        # 初始化sentence transformer模型
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+
+    def connect_neo4j(self):
+        """连接到Neo4j数据库"""
+        if not self.neo4j_password:
+            raise ValueError("NEO4J_PASSWORD环境变量未设置")
+        
+        try:
+            self.neo4j_driver = GraphDatabase.driver(
+                self.neo4j_uri,
+                auth=(self.neo4j_user, self.neo4j_password)
+            )
+            logger.info("成功连接到Neo4j数据库")
+        except Exception as e:
+            logger.error(f"连接Neo4j失败: {e}")
+            raise
+
+    def connect_pinecone(self):
+        """连接到Pinecone"""
+        if not self.pinecone_api_key or not self.pinecone_environment:
+            raise ValueError("Pinecone环境变量未设置")
+        
+        try:
+            pinecone.init(
+                api_key=self.pinecone_api_key,
+                environment=self.pinecone_environment
+            )
+            
+            # 如果索引不存在则创建
+            if self.index_name not in pinecone.list_indexes():
+                pinecone.create_index(
+                    name=self.index_name,
+                    dimension=384,  # all-MiniLM-L6-v2模型的维度
+                    metric='cosine'
+                )
+            logger.info("成功连接到Pinecone")
+        except Exception as e:
+            logger.error(f"连接Pinecone失败: {e}")
+            raise
+
+    def load_json_data(self, file_path: str) -> Dict:
+        """加载JSON文件数据"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data
+        except Exception as e:
+            logger.error(f"加载JSON文件失败: {e}")
+            raise
+
+    def create_knowledge_graph(self, place_data: Dict):
+        """将场所数据构建为知识图谱"""
+        if not self.neo4j_driver:
+            raise ValueError("Neo4j连接未初始化")
+
+        try:
+            with self.neo4j_driver.session() as session:
+                # 创建场所节点
+                session.run("""
+                    CREATE (p:Place {
+                        place_id: $place_id,
+                        name: $name,
+                        address: $address,
+                        rating: $rating,
+                        types: $types
+                    })
+                """, {
+                    'place_id': place_data['place_id'],
+                    'name': place_data['name'],
+                    'address': place_data.get('formatted_address', ''),
+                    'rating': place_data.get('rating', 0.0),
+                    'types': place_data.get('types', [])
+                })
+
+                # 添加评论节点和关系
+                if 'reviews' in place_data:
+                    for review in place_data['reviews']:
+                        session.run("""
+                            MATCH (p:Place {place_id: $place_id})
+                            CREATE (r:Review {
+                                author_name: $author_name,
+                                rating: $rating,
+                                text: $text,
+                                time: $time
+                            })
+                            CREATE (r)-[:REVIEWS]->(p)
+                        """, {
+                            'place_id': place_data['place_id'],
+                            'author_name': review['author_name'],
+                            'rating': review['rating'],
+                            'text': review['text'],
+                            'time': review['time']
+                        })
+
+            logger.info(f"成功为场所 {place_data['name']} 创建知识图谱")
+        except Exception as e:
+            logger.error(f"创建知识图谱失败: {e}")
+            raise
+
+    def create_embeddings(self, place_data: Dict):
+        """为场所数据创建嵌入向量"""
+        try:
+            # 构建文本表示
+            text_representation = f"{place_data['name']} {place_data.get('formatted_address', '')} "
+            text_representation += f"Types: {', '.join(place_data.get('types', []))} "
+            
+            if 'reviews' in place_data:
+                reviews_text = ' '.join([review['text'] for review in place_data['reviews']])
+                text_representation += f"Reviews: {reviews_text}"
+
+            # 生成嵌入向量
+            embedding = self.model.encode(text_representation)
+
+            # 存储到Pinecone
+            index = pinecone.Index(self.index_name)
+            index.upsert(
+                vectors=[(
+                    place_data['place_id'],
+                    embedding.tolist(),
+                    {
+                        'name': place_data['name'],
+                        'address': place_data.get('formatted_address', ''),
+                        'rating': place_data.get('rating', 0.0)
+                    }
+                )]
+            )
+            
+            logger.info(f"成功为场所 {place_data['name']} 创建和存储嵌入向量")
+        except Exception as e:
+            logger.error(f"创建嵌入向量失败: {e}")
+            raise
+
+    def process_places_data(self, json_file_path: str):
+        """处理Places API数据的主函数"""
+        try:
+            # 连接数据库
+            self.connect_neo4j()
+            self.connect_pinecone()
+
+            # 加载数据
+            data = self.load_json_data(json_file_path)
+            
+            # 处理每个场所
+            for place in data.get('results', []):
+                self.create_knowledge_graph(place)
+                self.create_embeddings(place)
+
+            logger.info("成功处理所有场所数据")
+        except Exception as e:
+            logger.error(f"处理场所数据失败: {e}")
+            raise
+        finally:
+            # 关闭连接
+            if self.neo4j_driver:
+                self.neo4j_driver.close()
+
+    def query_similar_places(self, query_text: str, top_k: int = 5):
+        """查询与输入文本最相似的场所"""
+        try:
+            # 生成查询文本的嵌入向量
+            query_embedding = self.model.encode(query_text).tolist()
+            
+            # 在Pinecone中搜索相似向量
+            index = pinecone.Index(self.index_name)
+            results = index.query(
+                vector=query_embedding,
+                top_k=top_k,
+                include_metadata=True
+            )
+            
+            return results
+        except Exception as e:
+            logger.error(f"查询相似场所失败: {e}")
+            raise
+
+if __name__ == "__main__":
+    # 使用示例
+    agent = RAGAgent()
+    agent.process_places_data("path/to/your/places_data.json")
