@@ -3,17 +3,17 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+  @apply bg-white text-slate-900 antialiased;
 }
 
 button {
-  @apply rounded-md bg-brand px-3 py-2 font-semibold text-slate-950 transition hover:bg-brand-muted;
+  @apply rounded-md bg-brand px-3 py-2 font-semibold text-white transition hover:bg-brand-muted;
 }
 
 input[type="text"] {
-  @apply w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-base text-slate-100 shadow-inner placeholder:text-slate-500 focus:border-brand focus:outline-none;
+  @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 shadow-inner placeholder:text-slate-400 focus:border-brand focus:outline-none;
 }
