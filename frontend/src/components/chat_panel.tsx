@@ -30,7 +30,7 @@ export function ChatPanel({
   }, [reset]);
 
   return (
-    <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-800 bg-slate-900/60 shadow-xl">
+    <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white shadow-lg">
       <div className="flex flex-col gap-3 px-6 pt-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-brand">Culinary discovery assistant</h1>
@@ -43,7 +43,7 @@ export function ChatPanel({
       <div className="flex-1 overflow-hidden px-2">
         <ChatTranscript messages={messages} isStreaming={isStreaming} />
       </div>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3 border-t border-slate-800 bg-slate-900/80 px-6 py-4">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
         <div className="flex gap-2">
           <input
             type="text"
@@ -58,7 +58,7 @@ export function ChatPanel({
             Send
           </button>
         </div>
-        {error ? <span className="text-sm text-red-400">{error}</span> : null}
+        {error ? <span className="text-sm text-red-500">{error}</span> : null}
       </form>
     </section>
   );
