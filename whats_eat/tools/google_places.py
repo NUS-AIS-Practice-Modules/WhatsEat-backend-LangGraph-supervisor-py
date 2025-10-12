@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import requests
 from langchain_core.tools import tool
@@ -10,6 +10,10 @@ from langchain_core.tools import tool
 _PLACES_BASE_URL = "https://places.googleapis.com/v1"
 _GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 _RETRY_STATUS = {429, 500, 502, 503, 504}
+
+_INLINE_PHOTO_LIMIT = 3
+_INLINE_PHOTO_MAX_W = 800
+_INLINE_PHOTO_MAX_H = 800
 
 
 def _require_api_key() -> str:
@@ -90,6 +94,8 @@ def _normalize_place(place: Dict[str, Any]) -> Dict[str, Any]:
     else:
         short_id = place_id
     photos = place.get("photos") or []
+    photo_names = [photo.get("name") for photo in photos if photo.get("name")]
+    photo_urls = _resolve_photo_urls(photo_names)
     normalized: Dict[str, Any] = {
         "place_id": short_id,
         "raw_place_id": place_id,
@@ -108,8 +114,11 @@ def _normalize_place(place: Dict[str, Any]) -> Dict[str, Any]:
         "user_ratings_total": place.get("userRatingCount") or place.get("userRatingsTotal"),
         "price_level": place.get("priceLevel"),
         "types": place.get("types") or [],
-        "photo_names": [photo.get("name") for photo in photos if photo.get("name")],
+        "photo_names": photo_names,
     }
+    if photo_urls:
+        normalized["photo_urls"] = photo_urls
+        normalized["photos"] = photo_urls
     summary = place.get("generativeSummary") or {}
     overview = summary.get("overview") or {}
     if overview.get("text"):
@@ -167,6 +176,24 @@ def _photo_to_url(photo_name: str, max_w: int, max_h: int) -> Optional[str]:
     return response.url
 
 
+def _resolve_photo_urls(
+    photo_names: Sequence[str],
+    *,
+    max_count: int = _INLINE_PHOTO_LIMIT,
+    max_w: int = _INLINE_PHOTO_MAX_W,
+    max_h: int = _INLINE_PHOTO_MAX_H,
+) -> List[str]:
+    urls: List[str] = []
+    for name in list(photo_names)[:max_count]:
+        try:
+            url = _photo_to_url(name, max_w=max_w, max_h=max_h)
+        except Exception:  # network errors should not break the entire place payload
+            continue
+        if url:
+            urls.append(url)
+    return urls
+
+
 @tool("place_geocode")
 def place_geocode(address: str) -> Dict[str, Any]:
     """Geocode an address (including postal code) into coordinates using Google Geocoding API.
@@ -193,6 +220,7 @@ def places_text_search(query: str, region: str = "SG") -> Dict[str, Any]:
             "places.userRatingCount",
             "places.priceLevel",
             "places.types",
+            "places.photos.name",
             "places.generativeSummary",
         ]
     )
@@ -235,6 +263,7 @@ def places_coordinate_search(
             "places.userRatingCount",
             "places.priceLevel",
             "places.types",
+            "places.photos.name",
             "places.generativeSummary",
         ]
     )
@@ -279,13 +308,15 @@ def places_fetch_photos(
     field_mask = "photos.name"
     data = _call_places(
         "GET", f"/{_ensure_place_path(place_id)}", field_mask=field_mask)
-    photo_entries = data.get("photos", [])[:max_count]
-    urls: List[str] = []
-    for photo in photo_entries:
-        name = photo.get("name")
-        if not name:
-            continue
-        url = _photo_to_url(name, max_w=max_w, max_h=max_h)
-        if url:
-            urls.append(url)
-    return urls
+    photo_entries = data.get("photos", [])
+    photo_names = [
+        photo.get("name")
+        for photo in photo_entries
+        if isinstance(photo, dict) and photo.get("name")
+    ]
+    return _resolve_photo_urls(
+        photo_names,
+        max_count=max_count,
+        max_w=max_w,
+        max_h=max_h,
+    )
