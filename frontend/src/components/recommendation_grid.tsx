@@ -68,6 +68,7 @@ function CardImage({ card }: { card: RestaurantCard }) {
       <img
         src={card.photos[0]}
         alt={`${card.name} cover`}
+        loading="lazy"
         className="h-40 w-full rounded-t-lg object-cover"
       />
     );
@@ -160,14 +161,14 @@ function CardBody({ card }: { card: RestaurantCard }) {
             Get directions →
           </a>
         ) : null}
-        {card.google_maps_uri ? (
+        {!card.deeplink && card.google_maps_uri ? (
           <a
             href={card.google_maps_uri}
             target="_blank"
             rel="noreferrer"
-            className="break-all text-xs text-slate-400 hover:text-slate-600"
+            className="text-brand hover:text-brand-muted"
           >
-            {card.google_maps_uri}
+            View on Google Maps →
           </a>
         ) : null}
       </div>
