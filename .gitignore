@@ -33,6 +33,8 @@ MANIFEST
 # Environments
 .venv
 .env
+.env.json
+*.env.json
 
 # mypy
 .mypy_cache/
@@ -42,5 +44,11 @@ dmypy.json
 .vscode
 .idea
 .langgraph_api
+
+# Sensitive files - API keys and credentials
 whats_eat/tools/client_secret.json
+whats_eat/client_secret.json
+client_secret.json
 token.json
+whats_eat/Neo4j*.txt
+Neo4j*.txt
