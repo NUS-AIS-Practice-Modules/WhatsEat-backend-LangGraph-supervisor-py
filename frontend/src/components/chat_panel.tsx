@@ -16,11 +16,12 @@ export function ChatPanel({
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!input.trim()) {
+      const message = input.trim();
+      if (!message) {
         return;
       }
-      await sendMessage(input.trim());
       setInput("");
+      await sendMessage(message);
     },
     [input, sendMessage]
   );

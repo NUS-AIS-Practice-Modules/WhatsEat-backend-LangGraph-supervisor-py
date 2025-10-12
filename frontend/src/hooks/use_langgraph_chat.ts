@@ -23,7 +23,8 @@ export interface ChatController {
 
 type LangGraphMessage = {
   id?: string;
-  role: string;
+  role?: string;
+  type?: string;
   content?: unknown;
   additional_kwargs?: Record<string, unknown>;
   response_metadata?: Record<string, unknown>;
@@ -136,15 +137,36 @@ function extractPayload(message: LangGraphMessage): SupervisorPayload | null {
   return null;
 }
 
+function resolveRole(message: LangGraphMessage): ChatMessage["role"] | null {
+  const rawRole = message.role ?? message.type ?? "";
+  const normalized = rawRole.toLowerCase();
+  if (normalized === "assistant" || normalized === "user") {
+    return normalized;
+  }
+  if (normalized === "ai") {
+    return "assistant";
+  }
+  if (normalized === "human") {
+    return "user";
+  }
+  return null;
+}
+
 function normalizeMessages(items: LangGraphMessage[]): ChatMessage[] {
-  return items
-    .filter((message) => message.role === "user" || message.role === "assistant")
-    .map((message) => ({
+const normalized: ChatMessage[] = [];
+  for (const message of items) {
+    const role = resolveRole(message);
+    if (!role) {
+      continue;
+    }
+    normalized.push({
       id: message.id ?? crypto.randomUUID(),
-      role: message.role as ChatMessage["role"],
+      role,
       content: extractText(message),
       payload: extractPayload(message),
-    }));
+    });
+}
+  return normalized;
 }
 
 export function useLanggraphChat(): ChatController {
