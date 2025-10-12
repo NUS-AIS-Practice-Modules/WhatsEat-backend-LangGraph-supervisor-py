@@ -44,5 +44,8 @@ dmypy.json
 .vscode
 .idea
 .langgraph_api
+
+#frontend
+frontend/node_modules/
 whats_eat/tools/client_secret.json
 token.json

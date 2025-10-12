@@ -1,4 +1,4 @@
-import type { SupervisorPayload } from "@types/whatseat";
+import type { SupervisorPayload } from "types/whatseat";
 
 interface RecommendationGridProps {
   payload: SupervisorPayload;
