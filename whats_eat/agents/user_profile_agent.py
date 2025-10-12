@@ -9,13 +9,23 @@ from whats_eat.tools.user_profile import (
     embed_user_preferences,
     yt_list_liked_videos,
     yt_list_subscriptions,
+    generate_embedding_profile,
+    generate_embedding_intent,
+    fuse_embeddings,
 )
 
 def build_user_profile_agent():
-    model = init_chat_model("openai:gpt-5-mini", temperature=0.2, top_p=1)
+    model = init_chat_model("openai:gpt-5", temperature=0.2, top_p=1)
     return create_react_agent(
         model=model,
-        tools=[yt_list_subscriptions, yt_list_liked_videos, embed_user_preferences],
+        tools=[
+            yt_list_subscriptions,
+            yt_list_liked_videos,
+            embed_user_preferences,
+            generate_embedding_profile,
+            generate_embedding_intent,
+            fuse_embeddings
+        ],
         prompt=(
             "You are the user_profile_agent within the “What’s Eat” supervisor workflow.\n"
             "You never respond directly to end users. Only act on instructions routed by the supervisor and use "
