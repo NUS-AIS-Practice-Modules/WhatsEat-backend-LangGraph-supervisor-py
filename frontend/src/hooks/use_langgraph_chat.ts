@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Client, ThreadState } from "@langchain/langgraph-sdk";
 import { getLanggraphClient, resolveGraphId } from "../lib/langgraph_client";
 import type { SupervisorPayload } from "../types/whatseat";
+import { normalizeSupervisorPayload } from "../lib/payload";
 
 export type ChatStatus = "initializing" | "ready" | "streaming" | "unavailable";
 
@@ -105,7 +106,10 @@ function extractText(message: LangGraphMessage): string {
 function extractPayload(message: LangGraphMessage): SupervisorPayload | null {
   const additional = message.additional_kwargs;
   if (additional && typeof additional === "object" && "structured_output" in additional) {
-    return additional.structured_output as SupervisorPayload;
+    const normalized = normalizeSupervisorPayload(additional.structured_output);
+    if (normalized) {
+      return normalized;
+    }
   }
 
   if (
@@ -116,19 +120,25 @@ function extractPayload(message: LangGraphMessage): SupervisorPayload | null {
   ) {
     const invocation = (additional as { tool_invocation?: { output?: unknown } }).tool_invocation;
     if (invocation?.output && typeof invocation.output === "object") {
-      return invocation.output as SupervisorPayload;
+      const normalized = normalizeSupervisorPayload(invocation.output);
+      if (normalized) {
+        return normalized;
+      }
     }
   }
 
   const metadata = message.response_metadata;
   if (metadata && typeof metadata === "object" && "structured" in metadata) {
-    return metadata.structured as SupervisorPayload;
+    const normalized = normalizeSupervisorPayload(metadata.structured);
+    if (normalized) {
+      return normalized;
+    }
   }
 
   const text = extractText(message);
   try {
-    const parsed = JSON.parse(text) as SupervisorPayload;
-    if (parsed && typeof parsed === "object" && "cards" in parsed) {
+    const parsed = normalizeSupervisorPayload(JSON.parse(text));
+    if (parsed) {
       return parsed;
     }
   } catch (error) {

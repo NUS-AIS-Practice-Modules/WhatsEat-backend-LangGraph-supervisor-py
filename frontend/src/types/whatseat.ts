@@ -16,6 +16,7 @@ export interface RestaurantCard {
     closes_at?: string;
   };
   deeplink?: string;
+  summary?: string;
   rationale?: string;
 }
 
