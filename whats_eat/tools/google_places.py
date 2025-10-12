@@ -220,6 +220,7 @@ def places_text_search(query: str, region: str = "SG") -> Dict[str, Any]:
             "places.userRatingCount",
             "places.priceLevel",
             "places.types",
+            "places.photos.name",
             "places.generativeSummary",
         ]
     )
@@ -262,6 +263,7 @@ def places_coordinate_search(
             "places.userRatingCount",
             "places.priceLevel",
             "places.types",
+            "places.photos.name",
             "places.generativeSummary",
         ]
     )
