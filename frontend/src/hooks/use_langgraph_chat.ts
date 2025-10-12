@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Client } from "@langchain/langgraph-sdk";
+import type { Client, ThreadState } from "@langchain/langgraph-sdk";
 import { getLanggraphClient, resolveGraphId } from "../lib/langgraph_client";
 import type { SupervisorPayload } from "../types/whatseat";
 
@@ -29,9 +29,40 @@ type LangGraphMessage = {
   response_metadata?: Record<string, unknown>;
 };
 
-type MessagesPage = {
-  data: LangGraphMessage[];
+type ThreadValues = ThreadState["values"];
+
+type AssistantRecord = {
+  assistant_id?: string;
+  assistantId?: string;
+  graph_id?: string;
+  graphId?: string;
 };
+
+function resolveAssistantId(candidate: AssistantRecord | null | undefined): string | null {
+  if (!candidate) {
+    return null;
+  }
+  return candidate.assistant_id ?? candidate.assistantId ?? null;
+}
+
+function extractMessages(values: ThreadValues | undefined): LangGraphMessage[] {
+  if (!values) {
+    return [];
+  }
+  if (Array.isArray(values)) {
+    return values as LangGraphMessage[];
+  }
+  if (typeof values === "object") {
+    const fromMessages = (values as { messages?: unknown }).messages;
+    if (Array.isArray(fromMessages)) {
+      return fromMessages as LangGraphMessage[];
+    }
+    if (fromMessages && typeof fromMessages === "object" && Array.isArray((fromMessages as { data?: unknown }).data)) {
+      return (fromMessages as { data: unknown[] }).data as LangGraphMessage[];
+    }
+  }
+  return [];
+}
 
 function extractText(message: LangGraphMessage): string {
   const { content } = message;
@@ -105,16 +136,15 @@ function extractPayload(message: LangGraphMessage): SupervisorPayload | null {
   return null;
 }
 
-function normalizeMessages(page: MessagesPage): ChatMessage[] {
-  return page.data
+function normalizeMessages(items: LangGraphMessage[]): ChatMessage[] {
+  return items
     .filter((message) => message.role === "user" || message.role === "assistant")
     .map((message) => ({
       id: message.id ?? crypto.randomUUID(),
       role: message.role as ChatMessage["role"],
       content: extractText(message),
       payload: extractPayload(message),
-    }))
-    .sort((a, b) => (a.id > b.id ? 1 : -1));
+    }));
 }
 
 export function useLanggraphChat(): ChatController {
@@ -125,11 +155,38 @@ export function useLanggraphChat(): ChatController {
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const threadIdRef = useRef<string | null>(null);
+  const assistantIdRef = useRef<string | null>(null);
+
+  const ensureAssistant = useCallback(async (): Promise<string> => {
+    if (assistantIdRef.current) {
+      return assistantIdRef.current;
+    }
+    const candidates = await client.assistants.search({ graphId });
+    const existing = candidates?.[0] ?? null;
+    const assistant = existing ?? (await client.assistants.create({ graphId }));
+    const assistantId = resolveAssistantId(assistant);
+    if (!assistantId) {
+      throw new Error("Unable to resolve assistant identifier");
+    }
+    assistantIdRef.current = assistantId;
+    return assistantId;
+  }, [client, graphId]);
+
+  const refreshMessages = useCallback(
+    async (threadId: string) => {
+      const state = await client.threads.getState(threadId);
+      const items = extractMessages(state?.values);
+      setMessages(normalizeMessages(items));
+    },
+    [client]
+  );
 
   const initialize = useCallback(async () => {
     try {
       setStatus("initializing");
       setError(null);
+      const assistantId = await ensureAssistant();
+      assistantIdRef.current = assistantId;
       const thread = await client.threads.create();
       threadIdRef.current =
         (thread as { thread_id?: string }).thread_id ??
@@ -146,7 +203,7 @@ export function useLanggraphChat(): ChatController {
       setError(cause instanceof Error ? cause.message : "Unable to initialize chat");
       setStatus("unavailable");
     }
-  }, [client]);
+  }, [client, ensureAssistant]);
 
   useEffect(() => {
     void initialize();
@@ -157,7 +214,11 @@ export function useLanggraphChat(): ChatController {
       if (!threadIdRef.current) {
         throw new Error("Thread not initialized yet");
       }
+      if (!assistantIdRef.current) {
+        assistantIdRef.current = await ensureAssistant();
+      }
       const threadId = threadIdRef.current;
+      const assistantId = assistantIdRef.current;
 
       const optimisticMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -171,19 +232,7 @@ export function useLanggraphChat(): ChatController {
       setError(null);
 
       try {
-        await client.threads.messages.create({
-          threadId,
-          messages: [
-            {
-              role: "user",
-              content,
-            },
-          ],
-        });
-
-        const run = await client.runs.create({
-          threadId,
-          graphId,
+        await client.runs.wait(threadId, assistantId, {
           input: {
             messages: [
               {
@@ -192,12 +241,8 @@ export function useLanggraphChat(): ChatController {
               },
             ],
           },
-          stream: false,
         });
-
-        await client.runs.wait({ threadId, runId: (run as { run_id?: string }).run_id ?? (run as { id?: string }).id });
-        const page = (await client.threads.messages.list({ threadId })) as MessagesPage;
-        setMessages(normalizeMessages(page));
+        await refreshMessages(threadId);
         setStatus("ready");
       } catch (cause) {
         console.error("Failed to complete run", cause);
@@ -207,7 +252,7 @@ export function useLanggraphChat(): ChatController {
         setIsStreaming(false);
       }
     },
-    [client, graphId]
+    [client, ensureAssistant, refreshMessages]
   );
 
   const reset = useCallback(async () => {

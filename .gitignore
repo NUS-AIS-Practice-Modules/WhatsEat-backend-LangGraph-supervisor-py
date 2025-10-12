@@ -44,3 +44,6 @@ dmypy.json
 .vscode
 .idea
 .langgraph_api
+
+#frontend
+frontend/node_modules/
