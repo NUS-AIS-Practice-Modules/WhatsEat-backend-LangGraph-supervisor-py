@@ -94,6 +94,9 @@ function CardBody({ card }: { card: RestaurantCard }) {
         <span className="text-xs uppercase tracking-wide text-slate-500">{typeLabel}</span>
         <h3 className="text-lg font-semibold text-slate-900">{card.name}</h3>
         {card.address ? <p className="text-sm text-slate-600">{card.address}</p> : null}
+        {card.summary ? (
+          <p className="text-sm leading-relaxed text-slate-600">{card.summary}</p>
+        ) : null}
       </header>
       <dl className="grid grid-cols-1 gap-2 text-sm text-slate-600">
         {ratingText ? (
