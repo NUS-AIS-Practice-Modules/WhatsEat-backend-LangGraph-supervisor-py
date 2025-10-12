@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import requests
 from langchain_core.tools import tool
 
 _PLACES_BASE_URL = "https://places.googleapis.com/v1"
+_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 _RETRY_STATUS = {429, 500, 502, 503, 504}
+
+_INLINE_PHOTO_LIMIT = 3
+_INLINE_PHOTO_MAX_W = 800
+_INLINE_PHOTO_MAX_H = 800
 
 
 def _require_api_key() -> str:
@@ -89,6 +94,8 @@ def _normalize_place(place: Dict[str, Any]) -> Dict[str, Any]:
     else:
         short_id = place_id
     photos = place.get("photos") or []
+    photo_names = [photo.get("name") for photo in photos if photo.get("name")]
+    photo_urls = _resolve_photo_urls(photo_names)
     normalized: Dict[str, Any] = {
         "place_id": short_id,
         "raw_place_id": place_id,
@@ -107,13 +114,37 @@ def _normalize_place(place: Dict[str, Any]) -> Dict[str, Any]:
         "user_ratings_total": place.get("userRatingCount") or place.get("userRatingsTotal"),
         "price_level": place.get("priceLevel"),
         "types": place.get("types") or [],
-        "photo_names": [photo.get("name") for photo in photos if photo.get("name")],
+        "photo_names": photo_names,
     }
+    if photo_urls:
+        normalized["photo_urls"] = photo_urls
+        normalized["photos"] = photo_urls
     summary = place.get("generativeSummary") or {}
     overview = summary.get("overview") or {}
     if overview.get("text"):
         normalized["summary"] = overview["text"]
     return normalized
+
+
+def _geocode_address(address: str) -> Dict[str, Any]:
+    """Geocode an address into coordinates using Google Geocoding API."""
+    if not address:
+        raise ValueError("address is required for geocoding")
+    params = {"address": address, "key": _require_api_key()}
+    resp = _request_with_backoff("GET", _GEOCODE_URL, params=params)
+    data = resp.json()
+    status = data.get("status")
+    if status != "OK":
+        raise RuntimeError(f"Geocoding failed: {status} {data.get('error_message')}")
+    result = data["results"][0]
+    loc = result["geometry"]["location"]
+    return {
+        "lat": loc["lat"],
+        "lng": loc["lng"],
+        "formatted": result.get("formatted_address"),
+        "place_id": result.get("place_id"),
+        "types": result.get("types") or [],
+    }
 
 
 def _ensure_place_path(place_id: str) -> str:
@@ -145,6 +176,36 @@ def _photo_to_url(photo_name: str, max_w: int, max_h: int) -> Optional[str]:
     return response.url
 
 
+def _resolve_photo_urls(
+    photo_names: Sequence[str],
+    *,
+    max_count: int = _INLINE_PHOTO_LIMIT,
+    max_w: int = _INLINE_PHOTO_MAX_W,
+    max_h: int = _INLINE_PHOTO_MAX_H,
+) -> List[str]:
+    urls: List[str] = []
+    for name in list(photo_names)[:max_count]:
+        try:
+            url = _photo_to_url(name, max_w=max_w, max_h=max_h)
+        except Exception:  # network errors should not break the entire place payload
+            continue
+        if url:
+            urls.append(url)
+    return urls
+
+
+@tool("place_geocode")
+def place_geocode(address: str) -> Dict[str, Any]:
+    """Geocode an address (including postal code) into coordinates using Google Geocoding API.
+
+    This tool converts any address or postal code into latitude and longitude coordinates.
+    Returns a dict with: {"lat": ..., "lng": ..., "formatted": ..., "place_id": ..., "types": [...]}
+
+    Requires env GOOGLE_MAPS_API_KEY.
+    """
+    return _geocode_address(address)
+
+
 @tool("places_text_search", return_direct=False)
 def places_text_search(query: str, region: str = "SG") -> Dict[str, Any]:
     """Text search a place on Google Places API. Returns JSON-like dict."""
@@ -159,6 +220,7 @@ def places_text_search(query: str, region: str = "SG") -> Dict[str, Any]:
             "places.userRatingCount",
             "places.priceLevel",
             "places.types",
+            "places.photos.name",
             "places.generativeSummary",
         ]
     )
@@ -169,6 +231,70 @@ def places_text_search(query: str, region: str = "SG") -> Dict[str, Any]:
                         field_mask=field_mask, json_body=payload)
     places = [_normalize_place(item) for item in data.get("places", [])]
     return {"query": query, "region": region, "candidates": places}
+
+
+@tool("places_coordinate_search", return_direct=False)
+def places_coordinate_search(
+    latitude: float,
+    longitude: float,
+    radius: float = 1500.0,
+    max_results: int = 20,
+    rank_by: str = "POPULARITY",
+) -> Dict[str, Any]:
+    """Search for nearby restaurants using coordinates and radius on Google Places API.
+
+    Args:
+        latitude: Center point latitude
+        longitude: Center point longitude
+        radius: Search radius in meters (default: 1500.0)
+        max_results: Maximum number of results to return (default: 20, max: 20)
+        rank_by: Ranking preference - "POPULARITY" or "DISTANCE" (default: "POPULARITY")
+
+    Returns JSON-like dict with nearby restaurant candidates.
+    """
+    field_mask = ",".join(
+        [
+            "places.id",
+            "places.displayName",
+            "places.formattedAddress",
+            "places.location",
+            "places.googleMapsUri",
+            "places.rating",
+            "places.userRatingCount",
+            "places.priceLevel",
+            "places.types",
+            "places.photos.name",
+            "places.generativeSummary",
+        ]
+    )
+
+    # Ensure max_results doesn't exceed API limit
+    max_results = min(max_results, 20)
+
+    # Validate rank_by parameter
+    rank_preference = rank_by.upper() if rank_by.upper() in {"POPULARITY", "DISTANCE"} else "POPULARITY"
+
+    payload: Dict[str, Any] = {
+        "includedTypes": ["restaurant"],
+        "maxResultCount": max_results,
+        "rankPreference": rank_preference,
+        "locationRestriction": {
+            "circle": {
+                "center": {"latitude": latitude, "longitude": longitude},
+                "radius": radius
+            }
+        }
+    }
+
+    data = _call_places("POST", "/places:searchNearby",
+                        field_mask=field_mask, json_body=payload)
+    places = [_normalize_place(item) for item in data.get("places", [])]
+    return {
+        "center": {"lat": latitude, "lng": longitude},
+        "radius": radius,
+        "rank_by": rank_preference,
+        "candidates": places
+    }
 
 
 @tool("places_fetch_photos")
@@ -182,13 +308,15 @@ def places_fetch_photos(
     field_mask = "photos.name"
     data = _call_places(
         "GET", f"/{_ensure_place_path(place_id)}", field_mask=field_mask)
-    photo_entries = data.get("photos", [])[:max_count]
-    urls: List[str] = []
-    for photo in photo_entries:
-        name = photo.get("name")
-        if not name:
-            continue
-        url = _photo_to_url(name, max_w=max_w, max_h=max_h)
-        if url:
-            urls.append(url)
-    return urls
+    photo_entries = data.get("photos", [])
+    photo_names = [
+        photo.get("name")
+        for photo in photo_entries
+        if isinstance(photo, dict) and photo.get("name")
+    ]
+    return _resolve_photo_urls(
+        photo_names,
+        max_count=max_count,
+        max_w=max_w,
+        max_h=max_h,
+    )
