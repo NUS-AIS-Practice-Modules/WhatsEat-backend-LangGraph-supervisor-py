@@ -7,6 +7,7 @@ A Python library for creating hierarchical multi-agent systems using [LangGraph]
 - 🤖 **Create a supervisor agent** to orchestrate multiple specialized agents
 - 🛠️ **Tool-based agent handoff mechanism** for communication between agents
 - 📝 **Flexible message history management** for conversation control
+- 🖥️ **Generative UI frontend scaffold** built with React + LangGraph SDK for interactive demos
 
 This library is built on top of [LangGraph](https://github.com/langchain-ai/langgraph), a powerful framework for building agent applications, and comes with out-of-box support for [streaming](https://langchain-ai.github.io/langgraph/how-tos/#streaming), [short-term and long-term memory](https://langchain-ai.github.io/langgraph/concepts/memory/) and [human-in-the-loop](https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/)
 
@@ -388,3 +389,30 @@ result = app.invoke({
 for m in result["messages"]:
     m.pretty_print()
 ```
+## Frontend (Generative UI)
+
+The `frontend/` directory contains a Vite + React application that follows the [LangGraph Generative UI tutorial](https://github.langchain.ac.cn/langgraphjs/cloud/how-tos/generative_ui_react/) and connects to the supervisor graph defined in `whats_eat/app/run.py`.
+
+1. Copy the template environment file:
+
+   ```bash
+   cd frontend
+   cp .env.example .env
+   ```
+
+2. Start the LangGraph backend (from the repository root):
+
+   ```bash
+   uv run langgraph dev
+   ```
+
+3. Install frontend dependencies and launch the dev server:
+
+   ```bash
+   pnpm install
+   pnpm dev
+   ```
+
+   Set `VITE_LANGGRAPH_API_PROXY` in `.env` to `http://localhost:8123` to proxy API calls while developing locally. For LangGraph Cloud deployments, configure `VITE_LANGGRAPH_API_URL` and `VITE_LANGGRAPH_API_KEY` instead.
+
+The frontend renders supervisor responses, including structured recommendation cards emitted by the backend agents.
