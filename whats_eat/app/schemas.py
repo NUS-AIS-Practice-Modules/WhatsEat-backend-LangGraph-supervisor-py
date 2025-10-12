@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
 class Geo(BaseModel):
@@ -23,6 +23,33 @@ class UserTasteProfile(BaseModel):
     price_prior: Optional[str] = None
     history_signals: Dict[str, dict] = {} # e.g., {"yt": {...}, "gmaps_cf": {...}}
     updated_at: Optional[str] = None
+
+class UserProfileEmbeddings(BaseModel):
+    """User profile with dual embeddings: taste profile and current intent"""
+    # Keywords and attributes
+    keywords: List[str] = Field(default_factory=list, description="Top food/cuisine keywords (≤12)")
+    attributes: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Structured attributes: price_band, diet, style, region"
+    )
+    
+    # Embedding Profile (long-term taste from YouTube/history)
+    embedding_profile_model: str = Field(default="text-embedding-3-small")
+    embedding_profile_dim: int = Field(default=0)
+    embedding_profile: List[float] = Field(default_factory=list)
+    
+    # Embedding Intent (current session: budget, location, dietary needs)
+    embedding_intent_model: str = Field(default="text-embedding-3-small")
+    embedding_intent_dim: int = Field(default=0)
+    embedding_intent: List[float] = Field(default_factory=list)
+    
+    # Fused embedding (alpha-weighted combination)
+    embedding_fused_alpha: float = Field(default=0.5, description="Weight for profile (0-1)")
+    embedding_fused: List[float] = Field(default_factory=list)
+    
+    # Metadata
+    notes: str = Field(default="", description="Processing notes and data sources")
+    created_at: Optional[str] = None
 
 class RestaurantDoc(BaseModel):
     place_id: str
