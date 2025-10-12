@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import type { RestaurantCard, SupervisorPayload } from "types/whatseat";
 
 interface RecommendationGridProps {
@@ -63,20 +64,95 @@ function renderDistance(card: RestaurantCard): string | null {
 }
 
 function CardImage({ card }: { card: RestaurantCard }) {
-  if (card.photos?.length) {
+  const photos = useMemo(
+    () =>
+      (card.photos ?? [])
+        .map((url) => url.trim())
+        .filter((url) => !!url),
+    [card.photos],
+  );
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [card.place_id, photos.join("|")]);
+
+  if (!photos.length) {
     return (
-      <img
-        src={card.photos[0]}
-        alt={`${card.name} cover`}
-        loading="lazy"
-        className="h-40 w-full rounded-t-lg object-cover"
-      />
+      <div className="flex h-40 w-full items-center justify-center rounded-t-lg bg-slate-100 text-sm text-slate-500">
+        Photo unavailable
+      </div>
     );
   }
 
+  const showPrevious = () => {
+    setActiveIndex((index) => (index === 0 ? photos.length - 1 : index - 1));
+  };
+
+  const showNext = () => {
+    setActiveIndex((index) => (index === photos.length - 1 ? 0 : index + 1));
+  };
+
+  const handleSelect = (index: number) => {
+    setActiveIndex(index);
+  };
+
+  const currentPhoto = photos[activeIndex] ?? photos[0];
+  const hasMultiple = photos.length > 1;
+
   return (
-    <div className="flex h-40 w-full items-center justify-center rounded-t-lg bg-slate-100 text-sm text-slate-500">
-      Photo unavailable
+    <div className="relative h-40 w-full overflow-hidden rounded-t-lg">
+      <img
+        src={currentPhoto}
+        alt={`${card.name} cover ${activeIndex + 1}`}
+        loading="lazy"
+        className="h-full w-full object-cover"
+      />
+      {hasMultiple ? (
+        <>
+          <button
+            type="button"
+            aria-label="Show previous photo"
+            onClick={(event) => {
+              event.stopPropagation();
+              showPrevious();
+            }}
+            className="group absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/40 px-2 py-1 text-white transition hover:bg-black/60 focus:outline-none focus:ring-2 focus:ring-white/70"
+          >
+            <span className="text-lg leading-none">‹</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Show next photo"
+            onClick={(event) => {
+              event.stopPropagation();
+              showNext();
+            }}
+            className="group absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/40 px-2 py-1 text-white transition hover:bg-black/60 focus:outline-none focus:ring-2 focus:ring-white/70"
+          >
+            <span className="text-lg leading-none">›</span>
+          </button>
+          <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1">
+            {photos.map((_, index) => (
+              <button
+                key={`${card.place_id}-photo-${index}`}
+                type="button"
+                aria-label={`Show photo ${index + 1}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleSelect(index);
+                }}
+                className={
+                  "h-2.5 w-2.5 rounded-full border border-white/80 transition " +
+                  (index === activeIndex ? "bg-white" : "bg-white/50 hover:bg-white/80")
+                }
+              >
+                <span className="sr-only">{`Photo ${index + 1}`}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
