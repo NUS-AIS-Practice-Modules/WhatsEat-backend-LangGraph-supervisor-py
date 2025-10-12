@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Client, ThreadState } from "@langchain/langgraph-sdk";
 import { getLanggraphClient, resolveGraphId } from "../lib/langgraph_client";
 import type { SupervisorPayload } from "../types/whatseat";
+import { normalizeSupervisorPayload } from "../lib/payload";
 
 export type ChatStatus = "initializing" | "ready" | "streaming" | "unavailable";
 
@@ -23,7 +24,8 @@ export interface ChatController {
 
 type LangGraphMessage = {
   id?: string;
-  role: string;
+  role?: string;
+  type?: string;
   content?: unknown;
   additional_kwargs?: Record<string, unknown>;
   response_metadata?: Record<string, unknown>;
@@ -104,7 +106,10 @@ function extractText(message: LangGraphMessage): string {
 function extractPayload(message: LangGraphMessage): SupervisorPayload | null {
   const additional = message.additional_kwargs;
   if (additional && typeof additional === "object" && "structured_output" in additional) {
-    return additional.structured_output as SupervisorPayload;
+    const normalized = normalizeSupervisorPayload(additional.structured_output);
+    if (normalized) {
+      return normalized;
+    }
   }
 
   if (
@@ -115,19 +120,25 @@ function extractPayload(message: LangGraphMessage): SupervisorPayload | null {
   ) {
     const invocation = (additional as { tool_invocation?: { output?: unknown } }).tool_invocation;
     if (invocation?.output && typeof invocation.output === "object") {
-      return invocation.output as SupervisorPayload;
+      const normalized = normalizeSupervisorPayload(invocation.output);
+      if (normalized) {
+        return normalized;
+      }
     }
   }
 
   const metadata = message.response_metadata;
   if (metadata && typeof metadata === "object" && "structured" in metadata) {
-    return metadata.structured as SupervisorPayload;
+    const normalized = normalizeSupervisorPayload(metadata.structured);
+    if (normalized) {
+      return normalized;
+    }
   }
 
   const text = extractText(message);
   try {
-    const parsed = JSON.parse(text) as SupervisorPayload;
-    if (parsed && typeof parsed === "object" && "cards" in parsed) {
+    const parsed = normalizeSupervisorPayload(JSON.parse(text));
+    if (parsed) {
       return parsed;
     }
   } catch (error) {
@@ -136,15 +147,36 @@ function extractPayload(message: LangGraphMessage): SupervisorPayload | null {
   return null;
 }
 
+function resolveRole(message: LangGraphMessage): ChatMessage["role"] | null {
+  const rawRole = message.role ?? message.type ?? "";
+  const normalized = rawRole.toLowerCase();
+  if (normalized === "assistant" || normalized === "user") {
+    return normalized;
+  }
+  if (normalized === "ai") {
+    return "assistant";
+  }
+  if (normalized === "human") {
+    return "user";
+  }
+  return null;
+}
+
 function normalizeMessages(items: LangGraphMessage[]): ChatMessage[] {
-  return items
-    .filter((message) => message.role === "user" || message.role === "assistant")
-    .map((message) => ({
+const normalized: ChatMessage[] = [];
+  for (const message of items) {
+    const role = resolveRole(message);
+    if (!role) {
+      continue;
+    }
+    normalized.push({
       id: message.id ?? crypto.randomUUID(),
-      role: message.role as ChatMessage["role"],
+      role,
       content: extractText(message),
       payload: extractPayload(message),
-    }));
+    });
+}
+  return normalized;
 }
 
 export function useLanggraphChat(): ChatController {

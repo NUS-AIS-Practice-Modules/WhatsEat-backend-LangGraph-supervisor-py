@@ -24,23 +24,29 @@ export function ChatTranscript({ messages, isStreaming }: ChatTranscriptProps) {
      <ScrollArea.Root className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white">
       <ScrollArea.Viewport className="h-full w-full">
         <div className="flex flex-col gap-4 p-6">
-          {messages.map((message) => (
-            <article
-              key={message.id}
-              className={clsx("flex flex-col gap-3 rounded-md border px-4 py-3", {
-                "border-brand/40 bg-brand/10 text-slate-900": message.role === "assistant",
-                "border-slate-200 bg-white text-slate-800": message.role !== "assistant",
-              })}
-            >
-              <span className="text-xs uppercase tracking-widest text-slate-500">
-                {message.role === "assistant" ? "Supervisor" : "You"}
-              </span>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                {message.content}
-              </p>
-              {message.payload ? <RecommendationGrid payload={message.payload} /> : null}
-            </article>
-          ))}
+          {messages.map((message) => {
+            const showContent = message.role !== "assistant" || !message.payload;
+
+            return (
+              <article
+                key={message.id}
+                className={clsx("flex flex-col gap-3 rounded-md border px-4 py-3", {
+                  "border-brand/40 bg-brand/10 text-slate-900": message.role === "assistant",
+                  "border-slate-200 bg-white text-slate-800": message.role !== "assistant",
+                })}
+              >
+                <span className="text-xs uppercase tracking-widest text-slate-500">
+                  {message.role === "assistant" ? "Supervisor" : "You"}
+                </span>
+                {showContent ? (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                    {message.content}
+                  </p>
+                ) : null}
+                {message.payload ? <RecommendationGrid payload={message.payload} /> : null}
+              </article>
+            );
+          })}
           {isStreaming ? (
             <div className="flex animate-pulse gap-2 text-sm text-brand">
               <span className="h-2 w-2 rounded-full bg-brand" />
