@@ -22,11 +22,19 @@ export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRe
     );
   }
 
+  const latestAssistantPayloadMessageId = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.payload)?.id;
+
   return (
-     <ScrollArea.Root className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white">
+    <ScrollArea.Root className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white">
       <ScrollArea.Viewport className="h-full w-full">
         <div className="flex flex-col gap-4 p-6">
           {messages.map((message) => {
+            if (message.role === "assistant" && message.payload && message.id !== latestAssistantPayloadMessageId) {
+              return null;
+            }
+
             const showContent = message.role !== "assistant" || !message.payload;
 
             return (
@@ -45,7 +53,7 @@ export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRe
                     {message.content}
                   </p>
                 ) : null}
-                {message.payload ? (
+                {message.payload && message.id === latestAssistantPayloadMessageId ? (
                   <RecommendationGrid
                     payload={message.payload}
                     onRequestMore={onRequestMore}
