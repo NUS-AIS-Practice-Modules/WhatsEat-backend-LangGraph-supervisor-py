@@ -306,6 +306,7 @@ function CardImage({ card }: { card: RestaurantCard }) {
   const photos = useMemo(
     () =>
       (card.photos ?? [])
+        .slice(0, 3)
         .map((url) => url.trim())
         .filter((url) => !!url),
     [card.photos],
@@ -345,6 +346,7 @@ function CardImage({ card }: { card: RestaurantCard }) {
         src={currentPhoto}
         alt={`${card.name} cover ${activeIndex + 1}`}
         loading="lazy"
+        decoding="async"
         className="h-full w-full object-cover"
       />
       {hasMultiple ? (
