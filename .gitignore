@@ -54,6 +54,5 @@ whats_eat/tools/client_secret.json
 apps/whatseat/data/tokens/
 whats_eat/client_secret.json
 client_secret.json
-token.json
 whats_eat/Neo4j*.txt
 Neo4j*.txt
