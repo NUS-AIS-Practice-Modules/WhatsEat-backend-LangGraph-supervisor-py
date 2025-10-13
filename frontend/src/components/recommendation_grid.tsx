@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RestaurantCard, SupervisorPayload } from "types/whatseat";
 
 interface RecommendationGridProps {
@@ -495,13 +495,68 @@ function CardBody({ card }: { card: RestaurantCard }) {
 
 export function RecommendationGrid({ payload }: RecommendationGridProps) {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   if (!payload.cards?.length) {
     return null;
   }
 
+  const updateScrollState = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      setCanScrollLeft(false);
+      setCanScrollRight(false);
+      return;
+    }
+
+    const { scrollLeft, scrollWidth, clientWidth } = container;
+    setCanScrollLeft(scrollLeft > 16);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 16);
+  }, []);
+
+  const scrollByCard = useCallback((direction: "left" | "right") => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const firstCard = container.firstElementChild as HTMLElement | null;
+    const baseWidth = firstCard?.clientWidth ?? container.clientWidth / 2;
+    const gap = 16; // gap-4 in Tailwind
+    const amount = baseWidth + gap;
+
+    container.scrollBy({
+      left: direction === "left" ? -amount : amount,
+      behavior: "smooth",
+    });
+  }, []);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    updateScrollState();
+
+    const handleScroll = () => updateScrollState();
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [updateScrollState, payload.cards?.length]);
+
+  useEffect(() => {
+    updateScrollState();
+  }, [payload.cards?.length, updateScrollState]);
+
   // 查找选中的餐厅
-  const selectedCard = selectedPlaceId 
+  const selectedCard = selectedPlaceId
     ? payload.cards.find((card) => card.place_id === selectedPlaceId)
     : null;
 
@@ -513,17 +568,44 @@ export function RecommendationGrid({ payload }: RecommendationGridProps) {
   // 否则显示卡片列表
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {payload.cards.map((card) => (
-          <article 
-            key={card.place_id} 
-            onClick={() => setSelectedPlaceId(card.place_id)}
-            className="flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm cursor-pointer hover:shadow-lg hover:border-orange-300 transition-all"
+      <div className="relative">
+        <div
+          ref={scrollContainerRef}
+          className="flex gap-4 overflow-x-auto scroll-smooth pb-4 snap-x snap-mandatory"
+        >
+          {payload.cards.map((card) => (
+            <article
+              key={card.place_id}
+              onClick={() => setSelectedPlaceId(card.place_id)}
+              className="flex h-full min-w-[280px] max-w-[320px] flex-shrink-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-all hover:border-orange-300 hover:shadow-lg snap-start md:min-w-[320px]"
+            >
+              <CardImage card={card} />
+              <CardBody card={card} />
+            </article>
+          ))}
+        </div>
+
+        {canScrollLeft ? (
+          <button
+            type="button"
+            aria-label="Scroll left"
+            onClick={() => scrollByCard("left")}
+            className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/90 p-2 text-slate-700 shadow ring-1 ring-black/5 transition hover:bg-white"
           >
-            <CardImage card={card} />
-            <CardBody card={card} />
-          </article>
-        ))}
+            ‹
+          </button>
+        ) : null}
+
+        {canScrollRight ? (
+          <button
+            type="button"
+            aria-label="Scroll right"
+            onClick={() => scrollByCard("right")}
+            className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/90 p-2 text-slate-700 shadow ring-1 ring-black/5 transition hover:bg-white"
+          >
+            ›
+          </button>
+        ) : null}
       </div>
       {payload.rationale ? (
         <p className="rounded-lg border border-dashed border-brand/40 bg-brand/5 p-4 text-sm text-slate-700">
