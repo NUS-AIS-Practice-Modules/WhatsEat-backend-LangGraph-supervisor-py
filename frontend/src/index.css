@@ -17,3 +17,12 @@ button {
 input[type="text"] {
   @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 shadow-inner placeholder:text-slate-400 focus:border-brand focus:outline-none;
 }
+
+.carousel-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.carousel-scroll::-webkit-scrollbar {
+  display: none;
+}
