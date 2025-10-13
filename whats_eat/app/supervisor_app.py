@@ -52,7 +52,9 @@ def build_app():
         model=init_chat_model("openai:gpt-5-mini"),
         tools=[forward_tool],              # your handoff tools will be auto-added
         prompt=supervisor_prompt,
-        add_handoff_back_messages=True,    # include “transfer back” messages
+        # add_handoff_back_messages=True,    # include “transfer back” messages
+        add_handoff_messages=False,  # keep graph memory compact for API responses
+        add_handoff_back_messages=False,  # return only the final AI message to clients
         output_mode="last_message",        # or "full_history" to include full traces
         include_agent_name="inline",       # robust name exposure for models
         parallel_tool_calls=False,         # 1-at-a-time handoffs (tutorial style)
