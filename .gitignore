@@ -43,4 +43,4 @@ dmypy.json
 .idea
 .langgraph_api
 whats_eat/tools/client_secret.json
-token.json
+apps/whatseat/data/tokens/

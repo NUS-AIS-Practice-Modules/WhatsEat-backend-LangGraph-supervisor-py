@@ -10,7 +10,7 @@ from whats_eat.tools.google_places import (
 
 def build_places_agent():
     return create_react_agent(
-        model=init_chat_model("openai:gpt-4.1"),
+        model=init_chat_model("openai:gpt-4o-mini"),
         tools=[places_text_search, places_coordinate_search, place_geocode, places_fetch_photos],
         prompt=(
             "You are an execution agent (places_agent) in the \"What's Eat\" system.\n"

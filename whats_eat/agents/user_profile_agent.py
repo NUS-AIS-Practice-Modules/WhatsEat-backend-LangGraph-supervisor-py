@@ -12,7 +12,7 @@ from whats_eat.tools.user_profile import (
 )
 
 def build_user_profile_agent():
-    model = init_chat_model("openai:gpt-4.1", temperature=0.2, top_p=1)
+    model = init_chat_model("openai:gpt-4o-mini", temperature=0.2, top_p=1)
     return create_react_agent(
         model=model,
         tools=[yt_list_subscriptions, yt_list_liked_videos, embed_user_preferences],

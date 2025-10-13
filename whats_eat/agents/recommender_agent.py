@@ -5,7 +5,7 @@ from whats_eat.tools.ranking import rank_restaurants
 
 def build_recommender_agent():
     return create_react_agent(
-        model=init_chat_model("openai:gpt-4.1"),
+        model=init_chat_model("openai:gpt-4o-mini"),
         tools=[rank_restaurants],
         prompt=(
             "You are an execution agent (recommender_agent) in the “What’s Eat” system.\n"
