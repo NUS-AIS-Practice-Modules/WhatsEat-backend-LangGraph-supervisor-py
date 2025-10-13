@@ -10,7 +10,7 @@ from whats_eat.tools.google_places import (
 
 def build_places_agent():
     return create_react_agent(
-        model=init_chat_model("openai:gpt-4o-mini"),
+        model=init_chat_model("openai:gpt-5-mini"),
         tools=[places_text_search, places_coordinate_search, place_geocode, places_fetch_photos],
         prompt=(
             "You are an execution agent (places_agent) in the \"What's Eat\" system.\n"
@@ -29,6 +29,7 @@ def build_places_agent():
             "   places.googleMapsUri, places.rating, places.userRatingCount,\n"
             "   places.priceLevel, places.types, places.photos.name, places.generativeSummary]\n"
             "- Automatically fetch photo metadata (places.photos.name) for each restaurant and include it in the output (return photo references, not binary images).\n"
+            "- Normalize photo URLs into an array like `\"photos\": [{ \"name\": \"https://...\" }, ...]` using at most three per restaurant; omit entries without a resolvable HTTPS URL.\n"
             "- Convert all addresses (whether postal codes or text addresses) into geographic coordinates (latitude and longitude) using the Google Maps Geocoding API,\n"
             "  and include these coordinates in the output for consistent processing.\n"
             "- Do NOT fabricate or infer any data beyond what the API provides.\n"

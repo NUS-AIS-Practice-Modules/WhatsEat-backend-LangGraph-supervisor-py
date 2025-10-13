@@ -1,0 +1,261 @@
+{
+  "test_timestamp": "D:\\github\\DEV\\WhatsEat-backend-LangGraph-supervisor-py\\tests",
+  "total_restaurants_fetched": 10,
+  "user_profiles_tested": [
+    "budget_conscious",
+    "foodie",
+    "vegetarian",
+    "upscale"
+  ],
+  "ranking_results": {
+    "budget_conscious": [
+      {
+        "name": "Phuket Cafe",
+        "final_score": 0.798,
+        "score_breakdown": {
+          "similarity": 0.992,
+          "rating": 0.936,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.7,
+        "price": null
+      },
+      {
+        "name": "Hat Yai",
+        "final_score": 0.778,
+        "score_breakdown": {
+          "similarity": 0.947,
+          "rating": 0.919,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.6,
+        "price": null
+      },
+      {
+        "name": "Rukdiew Cafe",
+        "final_score": 0.7758,
+        "score_breakdown": {
+          "similarity": 0.956,
+          "rating": 0.898,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.5,
+        "price": null
+      },
+      {
+        "name": "Siam Umami",
+        "final_score": 0.7624,
+        "score_breakdown": {
+          "similarity": 0.865,
+          "rating": 0.972,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.9,
+        "price": null
+      },
+      {
+        "name": "Farmhouse Kitchen Thai Cuisine | Pearl District",
+        "final_score": 0.7546,
+        "score_breakdown": {
+          "similarity": 0.837,
+          "rating": 0.98,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.9,
+        "price": null
+      }
+    ],
+    "foodie": [
+      {
+        "name": "Phuket Cafe",
+        "final_score": 0.798,
+        "score_breakdown": {
+          "similarity": 0.992,
+          "rating": 0.936,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.7,
+        "price": null
+      },
+      {
+        "name": "Hat Yai",
+        "final_score": 0.778,
+        "score_breakdown": {
+          "similarity": 0.947,
+          "rating": 0.919,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.6,
+        "price": null
+      },
+      {
+        "name": "Rukdiew Cafe",
+        "final_score": 0.7758,
+        "score_breakdown": {
+          "similarity": 0.956,
+          "rating": 0.898,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.5,
+        "price": null
+      },
+      {
+        "name": "Siam Umami",
+        "final_score": 0.7624,
+        "score_breakdown": {
+          "similarity": 0.865,
+          "rating": 0.972,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.9,
+        "price": null
+      },
+      {
+        "name": "Farmhouse Kitchen Thai Cuisine | Pearl District",
+        "final_score": 0.7546,
+        "score_breakdown": {
+          "similarity": 0.837,
+          "rating": 0.98,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.9,
+        "price": null
+      }
+    ],
+    "vegetarian": [
+      {
+        "name": "Phuket Cafe",
+        "final_score": 0.7938,
+        "score_breakdown": {
+          "similarity": 0.992,
+          "rating": 0.936,
+          "attributes": 0.25,
+          "distance": 1.0
+        },
+        "rating": 4.7,
+        "price": null
+      },
+      {
+        "name": "Hat Yai",
+        "final_score": 0.7739,
+        "score_breakdown": {
+          "similarity": 0.947,
+          "rating": 0.919,
+          "attributes": 0.25,
+          "distance": 1.0
+        },
+        "rating": 4.6,
+        "price": null
+      },
+      {
+        "name": "Rukdiew Cafe",
+        "final_score": 0.7716,
+        "score_breakdown": {
+          "similarity": 0.956,
+          "rating": 0.898,
+          "attributes": 0.25,
+          "distance": 1.0
+        },
+        "rating": 4.5,
+        "price": null
+      },
+      {
+        "name": "Siam Umami",
+        "final_score": 0.7582,
+        "score_breakdown": {
+          "similarity": 0.865,
+          "rating": 0.972,
+          "attributes": 0.25,
+          "distance": 1.0
+        },
+        "rating": 4.9,
+        "price": null
+      },
+      {
+        "name": "Farmhouse Kitchen Thai Cuisine | Pearl District",
+        "final_score": 0.7504,
+        "score_breakdown": {
+          "similarity": 0.837,
+          "rating": 0.98,
+          "attributes": 0.25,
+          "distance": 1.0
+        },
+        "rating": 4.9,
+        "price": null
+      }
+    ],
+    "upscale": [
+      {
+        "name": "Phuket Cafe",
+        "final_score": 0.798,
+        "score_breakdown": {
+          "similarity": 0.992,
+          "rating": 0.936,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.7,
+        "price": null
+      },
+      {
+        "name": "Hat Yai",
+        "final_score": 0.778,
+        "score_breakdown": {
+          "similarity": 0.947,
+          "rating": 0.919,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.6,
+        "price": null
+      },
+      {
+        "name": "Rukdiew Cafe",
+        "final_score": 0.7758,
+        "score_breakdown": {
+          "similarity": 0.956,
+          "rating": 0.898,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.5,
+        "price": null
+      },
+      {
+        "name": "Siam Umami",
+        "final_score": 0.7624,
+        "score_breakdown": {
+          "similarity": 0.865,
+          "rating": 0.972,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.9,
+        "price": null
+      },
+      {
+        "name": "Farmhouse Kitchen Thai Cuisine | Pearl District",
+        "final_score": 0.7546,
+        "score_breakdown": {
+          "similarity": 0.837,
+          "rating": 0.98,
+          "attributes": 0.267,
+          "distance": 1.0
+        },
+        "rating": 4.9,
+        "price": null
+      }
+    ]
+  },
+  "validation_issues": []
+}
