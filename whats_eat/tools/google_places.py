@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import time
+import logging
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Sequence
 
 import requests
@@ -12,8 +14,10 @@ _GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 
 _INLINE_PHOTO_LIMIT = 3
-_INLINE_PHOTO_MAX_W = 800
-_INLINE_PHOTO_MAX_H = 800
+_INLINE_PHOTO_MAX_W = 640
+_INLINE_PHOTO_MAX_H = 480
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _require_api_key() -> str:
@@ -94,7 +98,11 @@ def _normalize_place(place: Dict[str, Any]) -> Dict[str, Any]:
     else:
         short_id = place_id
     photos = place.get("photos") or []
-    photo_names = [photo.get("name") for photo in photos if photo.get("name")]
+    photo_names = [
+        photo.get("name")
+        for photo in photos
+        if photo.get("name")
+    ][: _INLINE_PHOTO_LIMIT]
     photo_urls = _resolve_photo_urls(photo_names)
     normalized: Dict[str, Any] = {
         "place_id": short_id,
@@ -115,10 +123,14 @@ def _normalize_place(place: Dict[str, Any]) -> Dict[str, Any]:
         "price_level": place.get("priceLevel"),
         "types": place.get("types") or [],
         "photo_names": photo_names,
+        "photos": [],
     }
     if photo_urls:
         normalized["photo_urls"] = photo_urls
-        normalized["photos"] = photo_urls
+        normalized["photos"] = [
+            {"name": url}
+            for url in photo_urls
+        ]
     summary = place.get("generativeSummary") or {}
     overview = summary.get("overview") or {}
     if overview.get("text"):
@@ -151,29 +163,52 @@ def _ensure_place_path(place_id: str) -> str:
     return place_id if place_id.startswith("places/") else f"places/{place_id}"
 
 
-def _photo_to_url(photo_name: str, max_w: int, max_h: int) -> Optional[str]:
-    params = {
+def _fetch_photo_url(photo_name: str, *, max_w: int, max_h: int) -> Optional[str]:
+    base_params = {
         "maxWidthPx": max_w,
         "maxHeightPx": max_h,
-        "skipHttpRedirect": "true",
     }
-    response = _request_with_backoff(
-        "GET",
-        f"{_PLACES_BASE_URL}/{photo_name}/media",
-        headers={"X-Goog-Api-Key": _require_api_key()},
-        params=params,
-    )
-    content_type = response.headers.get("Content-Type", "")
-    if content_type.startswith("application/json"):
+    last_error: Optional[Exception] = None
+    # First attempt with skipHttpRedirect to avoid downloading the full image.
+    for extra_params in ({"skipHttpRedirect": "true"}, {}):
         try:
-            data = response.json()
-        except ValueError:
-            return None
-        return data.get("photoUri")
-    location = response.headers.get("Location")
-    if location:
-        return location
-    return response.url
+            response = _request_with_backoff(
+                "GET",
+                f"{_PLACES_BASE_URL}/{photo_name}/media",
+                headers={"X-Goog-Api-Key": _require_api_key()},
+                params={**base_params, **extra_params},
+            )
+        except Exception as exc:  # noqa: BLE001 - upstream HTTP client errors
+            last_error = exc
+            continue
+
+        content_type = response.headers.get("Content-Type", "")
+        if content_type.startswith("application/json"):
+            try:
+                data = response.json()
+            except ValueError as exc:  # invalid JSON payload
+                last_error = exc
+                continue
+            photo_uri = data.get("photoUri")
+            if photo_uri:
+                return photo_uri
+
+        location = response.headers.get("Location")
+        if location:
+            return location
+
+        # requests follows redirects by default; fall back to the resolved URL.
+        if response.url:
+            return response.url
+
+    if last_error:
+        _LOGGER.warning("Failed to resolve photo %s: %s", photo_name, last_error)
+    return None
+
+
+@lru_cache(maxsize=256)
+def _photo_to_url(photo_name: str, max_w: int, max_h: int) -> Optional[str]:
+    return _fetch_photo_url(photo_name, max_w=max_w, max_h=max_h)
 
 
 def _resolve_photo_urls(
@@ -300,11 +335,16 @@ def places_coordinate_search(
 @tool("places_fetch_photos")
 def places_fetch_photos(
     place_id: str,
-    max_count: int = 4,
-    max_w: int = 800,
-    max_h: int = 800,
-) -> List[str]:
-    """Return direct photo URLs for a place_id (length <= max_count)."""
+    max_count: int = _INLINE_PHOTO_LIMIT,
+    max_w: int = _INLINE_PHOTO_MAX_W,
+    max_h: int = _INLINE_PHOTO_MAX_H,
+) -> Dict[str, Any]:
+    """Return direct photo URLs and formatted photo objects for a place_id.
+
+    The result includes both the raw URL list (``photo_urls``) and a ``photos``
+    array where each entry is ``{"name": "https://..."}``, suitable for the
+    frontend carousel.
+    """
     field_mask = "photos.name"
     data = _call_places(
         "GET", f"/{_ensure_place_path(place_id)}", field_mask=field_mask)
@@ -313,10 +353,17 @@ def places_fetch_photos(
         photo.get("name")
         for photo in photo_entries
         if isinstance(photo, dict) and photo.get("name")
-    ]
-    return _resolve_photo_urls(
+    ][: max_count]
+    photo_urls = _resolve_photo_urls(
         photo_names,
         max_count=max_count,
         max_w=max_w,
         max_h=max_h,
     )
+    return {
+        "photo_urls": photo_urls,
+        "photos": [
+            {"name": url}
+            for url in photo_urls
+        ],
+    }
