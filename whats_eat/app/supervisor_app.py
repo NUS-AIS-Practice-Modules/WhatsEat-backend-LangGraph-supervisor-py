@@ -21,9 +21,8 @@ def build_app():
     forward_tool = create_forward_message_tool()
 
     supervisor_prompt = (
-        "You are the supervisor. Route each user request to exactly ONE agent at a time.\n"
+        "You are the supervisor. On each turn decide whether to delegate to exactly ONE agent or to finish the task.\n"
         "- Available agents:\n"
-
         "  • places_agent – retrieves and analyzes information about places, restaurants, or local venues; GEOCODES any addresses (user or restaurant) to lat/long.\n"
         "  • user_profile_agent – converts YouTube behaviour into structured dining preferences and embeddings.\n"
         "  • recommender_agent – ranks, filters, or selects items (e.g., recommends top places based on taste, location, or user preferences).\n"
@@ -36,21 +35,20 @@ def build_app():
         "  • Knowledge-based questions or document retrieval → rag_agent\n"
         "  • Ranking, comparison, or shortlisting → recommender_agent\n"
         "  • Routing / map visualization when coordinates are known → route_agent\n"
-        "  • When all required information has been gathered, produce the final answer → summarizer_agent\n"
-        "- Do not solve tasks yourself. Use handoff tools to delegate.\n"
-        "- Always delegate to exactly ONE agent per turn.\n"
+        "  • When all required information has been gathered, produce the final answer → summarizer_agent exactly once.\n"
+        "- Do not solve tasks yourself. Use handoff tools to delegate when additional work is required.\n"
         "- If the request is unclear or missing critical information (e.g., starting address or selected restaurant), ask ONE short clarifying question before delegating.\n"
         "- Multi-step handling (typical flows):\n"
         "  • Place search only: places_agent → summarizer_agent\n"
         "  • Recommendations: places_agent → recommender_agent → summarizer_agent\n"
         "  • Route/map: places_agent (geocode addresses to lat/long) → route_agent (compute route & map) → summarizer_agent\n"
         "- Pass only coordinates (lat/long) to route_agent; do not pass raw addresses.\n"
-        "- The summarizer_agent always produces the final output shown to the user.\n"
+        "- After summarizer_agent produces the final JSON, stop delegating and end the run. Never re-call summarizer_agent without new information.\n"
+        "- The summarizer_agent output is the final response shown to the user.\n"
         "- IMPORTANT: Once summarizer_agent provides the final answer, the conversation is COMPLETE. Do not route to any other agents.\n"
         "- If you receive a response from summarizer_agent, forward it directly to the user and STOP."
 
-
-)
+    )
 
     workflow = create_supervisor(
         agents=[places, user_profile, recommender, summarizer, route, rag],

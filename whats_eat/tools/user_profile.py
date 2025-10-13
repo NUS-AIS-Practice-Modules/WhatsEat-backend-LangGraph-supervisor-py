@@ -14,6 +14,7 @@ import time
 from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+
 from langchain_core.tools import tool
 from langchain_openai import OpenAIEmbeddings
 from pydantic import BaseModel, Field
@@ -86,27 +87,23 @@ def _ensure_dependencies() -> None:
         )
 
 
-@lru_cache(maxsize=1)
-def _get_youtube_client():
-    """Return an authorized YouTube Data API client, refreshing the token if needed."""
+@lru_cache(maxsize=64)
+def _get_youtube_client_cached(token_path: str, scopes: tuple[str, ...]):
+    """Return an authorized YouTube client bound to a specific token+scopes."""
     _ensure_dependencies()
-
-    scopes = _load_scopes()
-    token_path = _token_path()
     if not os.path.exists(token_path):
         raise FileNotFoundError(
-            f"OAuth token not found at '{token_path}'. "
-            "Complete the authorization flow and save the token file."
+            f"OAuth token not found at '{token_path}'. Complete authorization first."
         )
 
-    creds = Credentials.from_authorized_user_file(token_path, scopes)  # type: ignore[misc]
+    creds = Credentials.from_authorized_user_file(token_path, list(scopes))  # type: ignore[misc]
     if not creds:
         raise RuntimeError("Unable to load OAuth credentials from token file.")
 
     if creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())  # type: ignore[misc]
-        except RefreshError as exc:  # pragma: no cover - depends on live creds
+        except RefreshError as exc:
             raise RuntimeError("Failed to refresh YouTube OAuth credentials.") from exc
         with open(token_path, "w", encoding="utf-8") as fh:
             fh.write(creds.to_json())
@@ -116,6 +113,12 @@ def _get_youtube_client():
 
     return build("youtube", "v3", credentials=creds, cache_discovery=False)  # type: ignore[misc]
 
+
+def _get_youtube_client():
+    """Backward-compatible wrapper using env/defaults."""
+    scopes = tuple(_load_scopes())
+    token_path = _token_path()
+    return _get_youtube_client_cached(token_path, scopes)
 
 def _coerce_int(value: Optional[str]) -> Optional[int]:
     if value is None:
@@ -568,4 +571,114 @@ __all__ = [
     "generate_embedding_intent",
     "fuse_embeddings"
 ]
+
+# === Interactive OAuth bootstrap (optional, run-once helper) ==================
+# 安全起见，不在工具调用时自动触发浏览器授权；仅在你显式调用时执行。
+import pathlib
+import json
+
+CLIENT_SECRET_ENV = "YOUTUBE_CLIENT_SECRET_PATH"  # 可自定义 client_secret.json 路径
+DEFAULT_CLIENT_SECRET = "whats_eat/tools/client_secret.json"
+
+
+def _client_secret_path() -> str:
+    return os.getenv(CLIENT_SECRET_ENV, DEFAULT_CLIENT_SECRET)
+
+
+def init_user_token(scopes: Optional[Sequence[str]] = None, client_secret_path: Optional[str] = None) -> str:
+    """
+    交互式生成/修复当前用户的 token 文件。
+    - 默认只读 YouTube，并自动追加 openid + userinfo.email 以获取邮箱
+    - 若设置了 YOUTUBE_TOKEN_PATH 且不是默认 token.json，则优先写到该路径
+    - 否则写到 apps/whatseat/data/tokens/<email>.json
+    返回写入的 token 绝对路径字符串
+    """
+    from google_auth_oauthlib.flow import InstalledAppFlow  # 仅此函数需要
+
+    # 1) 作用域：在现有 _load_scopes() 基础上追加获取邮箱所需的 scopes
+    base_scopes = list(_load_scopes())  # 通常是 ["https://www.googleapis.com/auth/youtube.readonly"]
+    extra_scopes = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
+    req_scopes = tuple(dict.fromkeys((scopes or (base_scopes + extra_scopes))))  # 去重保序
+
+    # 2) 读取 client_secret.json
+    cs_path = client_secret_path or _client_secret_path()
+    if not os.path.exists(cs_path):
+        raise FileNotFoundError(f"client_secret.json not found at: {cs_path}")
+
+    # 3) 本地授权（浏览器回跳）
+    flow = InstalledAppFlow.from_client_secrets_file(cs_path, list(req_scopes))
+    creds = flow.run_local_server(port=0, prompt="consent")
+
+    # 4) 读取授权用户邮箱（失败时容错）
+    email: Optional[str] = None
+    try:
+        from googleapiclient.discovery import build as _gbuild
+        oauth2 = _gbuild("oauth2", "v2", credentials=creds, cache_discovery=False)
+        info = oauth2.userinfo().get().execute()  # 需要 userinfo.email
+        email = (info.get("email") or "").strip().lower() or None
+    except Exception:
+        email = None  # 邮箱拿不到也不影响后续写文件
+
+    # 5) 决定 token 写入路径
+    #    - 若显式设置了 YOUTUBE_TOKEN_PATH 且不是默认 token.json，则用其值
+    #    - 否则自动写到 apps/whatseat/data/tokens/<email>.json（拿不到邮箱就回退到默认 _token_path()）
+    explicit = os.getenv(TOKEN_ENV)  # YOUTUBE_TOKEN_PATH
+    if explicit and explicit not in ("", "token.json"):
+        token_path = pathlib.Path(explicit)
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        if email:
+            base_dir = pathlib.Path("apps/whatseat/data/tokens")
+            base_dir.mkdir(parents=True, exist_ok=True)
+            safe_email = email.replace("/", "_")
+            token_path = base_dir / f"{safe_email}.json"
+        else:
+            token_path = pathlib.Path(_token_path())
+            token_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 6) 写入 token
+    token_path.write_text(creds.to_json(), encoding="utf-8")
+
+    # 7) 简查并提示
+    data = json.loads(token_path.read_text(encoding="utf-8"))
+    if not bool(data.get("refresh_token")):
+        print("WARN: No refresh_token in token file. Revoke previous grant and re-run if needed.")
+    print(f"WROTE {token_path.resolve()}  (user={email or 'unknown'})")
+    return str(token_path.resolve())
+
+
+
+# --- 小型 CLI：python -m whats_eat.tools.user_profile --init-token ---
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="YouTube OAuth bootstrap & quick checks")
+    parser.add_argument("--init-token", action="store_true", help="Run interactive OAuth and write token.json")
+    parser.add_argument("--show-token", action="store_true", help="Print token.json basic info and exit")
+    parser.add_argument("--client-secret", type=str, default=None, help="Path to client_secret.json (optional)")
+    #read user email
+    # parser.add_argument("--whoami", action="store_true", help="Print email for current token")
+    #read user email
+
+    args = parser.parse_args()
+
+    if args.init_token:
+        init_user_token(client_secret_path=args.client_secret)
+    elif args.show_token:
+        p = pathlib.Path(_token_path())
+        if not p.exists():
+            print(f"token not found at {_token_path()}")
+        else:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            print(json.dumps({
+                "path": str(p.resolve()),
+                "have_access_token": bool(data.get("token")),
+                "have_refresh_token": bool(data.get("refresh_token")),
+                "scopes": data.get("scopes"),
+                "expiry": data.get("expiry"),
+            }, indent=2))
+    #read user email
+    #read user email
+    else:
+        parser.print_help()
 

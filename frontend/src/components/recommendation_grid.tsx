@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import clsx from "clsx";
 import type { RestaurantCard, SupervisorPayload } from "types/whatseat";
 
 interface RecommendationGridProps {
   payload: SupervisorPayload;
+  onRequestMore?: () => void | Promise<void>;
+  disableRequestMore?: boolean;
 }
 
 // 详情页组件
@@ -22,10 +25,17 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
     [card.photos],
   );
   const [activeIndex, setActiveIndex] = useState(0);
+  const [animateIn, setAnimateIn] = useState(false);
 
   useEffect(() => {
     setActiveIndex(0);
   }, [card.place_id, photos.join("|")]);
+
+  useEffect(() => {
+    setAnimateIn(false);
+    const frame = requestAnimationFrame(() => setAnimateIn(true));
+    return () => cancelAnimationFrame(frame);
+  }, [card.place_id]);
 
   const showPrevious = () => {
     setActiveIndex((index) => (index === 0 ? photos.length - 1 : index - 1));
@@ -43,200 +53,209 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
   const hasMultiple = photos.length > 1;
 
   return (
-    <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
-      {/* 顶部导航栏 */}
-      <div className="bg-orange-600 px-6 py-4 flex justify-between items-center">
-        <h2 className="text-white text-xl font-semibold">{card.name}</h2>
-        <button
-          onClick={onBack}
-          className="text-white text-sm bg-orange-700 hover:bg-orange-800 px-4 py-2 rounded transition-colors"
-        >
-          ← 返回列表
-        </button>
-      </div>
-
-      <div className="p-6">
-        {/* 图片轮播区域 */}
-        {currentPhoto ? (
-          <div className="relative h-96 w-full overflow-hidden rounded-lg mb-6">
-            <img
-              src={currentPhoto}
-              alt={`${card.name} 图片 ${activeIndex + 1}`}
-              loading="lazy"
-              className="h-full w-full object-cover"
-            />
-            {hasMultiple && (
-              <>
-                <button
-                  type="button"
-                  aria-label="上一张图片"
-                  onClick={showPrevious}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  aria-label="下一张图片"
-                  onClick={showNext}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
-                >
-                  ›
-                </button>
-                <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-                  {photos.map((_, index) => (
-                    <button
-                      key={`photo-dot-${index}`}
-                      type="button"
-                      aria-label={`显示图片 ${index + 1}`}
-                      onClick={() => handleSelect(index)}
-                      className={
-                        "h-3 w-3 rounded-full border-2 border-white transition " +
-                        (index === activeIndex ? "bg-white" : "bg-white/50 hover:bg-white/80")
-                      }
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="flex h-96 w-full items-center justify-center rounded-lg bg-slate-100 text-slate-500 mb-6">
-            暂无图片
-          </div>
+    <div className="flex w-full justify-center px-2 sm:px-4 perspective-1200">
+      <div
+        className={clsx(
+          "w-full max-w-3xl origin-left",
+          animateIn && "animate-restaurant-flip",
         )}
-
-        {/* 详细信息区域 */}
-        <div className="space-y-6">
-          {/* 基本信息 */}
-          <div className="flex justify-between items-start border-b pb-4">
-            <div className="flex-1">
-              <span className="text-sm uppercase tracking-wide text-slate-500">{typeLabel}</span>
-              <h3 className="text-2xl font-bold text-slate-900 mt-1">{card.name}</h3>
-              {card.address && (
-                <p className="text-slate-600 mt-2 flex items-start gap-2">
-                  <span className="text-slate-400">📍</span>
-                  {card.address}
-                </p>
-              )}
-            </div>
-            <div className="text-right">
-              <span className="text-2xl font-bold text-orange-600">{priceLabel}</span>
-            </div>
-          </div>
-
-          {/* 摘要 */}
-          {card.summary && (
-            <div className="bg-slate-50 rounded-lg p-4">
-              <p className="text-slate-700 leading-relaxed">{card.summary}</p>
-            </div>
-          )}
-
-          {/* 详细信息网格 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {ratingText && (
-              <div className="bg-white border border-slate-200 rounded-lg p-4">
-                <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">⭐ 评分</dt>
-                <dd className="text-lg font-semibold text-slate-900">{ratingText}</dd>
-              </div>
-            )}
-            <div className="bg-white border border-slate-200 rounded-lg p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">💰 价格</dt>
-              <dd className="text-lg font-semibold text-slate-900">{priceLabel}</dd>
-            </div>
-            {distance && (
-              <div className="bg-white border border-slate-200 rounded-lg p-4">
-                <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">📏 距离</dt>
-                <dd className="text-lg font-semibold text-slate-900">{distance}</dd>
-              </div>
-            )}
-            {openStatus && (
-              <div className="bg-white border border-slate-200 rounded-lg p-4">
-                <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">🕒 营业状态</dt>
-                <dd className="text-lg font-semibold text-slate-900">{openStatus}</dd>
-              </div>
-            )}
-          </div>
-
-          {/* 类型标签 */}
-          {typeList.length > 0 && (
-            <div>
-              <p className="text-sm uppercase tracking-wide text-slate-500 mb-3">餐厅类型</p>
-              <div className="flex flex-wrap gap-2">
-                {typeList.map((type, index) => (
-                  <span
-                    key={`type-${index}`}
-                    className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm"
-                  >
-                    {type}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 标签 */}
-          {card.tags && card.tags.length > 0 && (
-            <div>
-              <p className="text-sm uppercase tracking-wide text-slate-500 mb-3">特色标签</p>
-              <div className="flex flex-wrap gap-2">
-                {card.tags.map((tag) => (
-                  <span
-                    key={`tag-${tag}`}
-                    className="px-3 py-1 border border-orange-400 text-orange-600 rounded-full text-sm font-medium"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 推荐理由 */}
-          {card.why && card.why.length > 0 && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-5">
-              <p className="text-sm font-semibold uppercase tracking-wide text-orange-800 mb-3">
-                💡 为什么推荐这家
-              </p>
-              <ul className="space-y-2 text-slate-700">
-                {card.why.map((reason, index) => (
-                  <li key={`reason-${index}`} className="flex items-start gap-2">
-                    <span className="text-orange-500 mt-1">•</span>
-                    <span>{reason}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* 操作按钮 */}
-          <div className="flex flex-col sm:flex-row gap-3 pt-4">
-            {card.deeplink && (
-              <a
-                href={card.deeplink}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-6 rounded-lg text-center transition-colors"
-              >
-                📍 获取路线
-              </a>
-            )}
-            {!card.deeplink && card.google_maps_uri && (
-              <a
-                href={card.google_maps_uri}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-6 rounded-lg text-center transition-colors"
-              >
-                📍 在 Google Maps 上查看
-              </a>
-            )}
+      >
+        <div className="mx-auto flex max-h-[78vh] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+          {/* 顶部导航栏 */}
+          <div className="flex flex-none items-center justify-between bg-orange-600 px-5 py-3">
+            <h2 className="text-left text-white text-base font-semibold lg:text-lg">{card.name}</h2>
             <button
               onClick={onBack}
-              className="flex-1 bg-white border-2 border-slate-300 text-slate-700 font-medium py-3 px-6 rounded-lg hover:bg-slate-50 transition-colors"
+              className="rounded bg-orange-700 px-3 py-1 text-xs text-white transition-colors hover:bg-orange-800"
             >
-              返回列表
+              ← 返回列表
             </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-5 pb-5 pt-4">
+            {/* 图片轮播区域 */}
+            {currentPhoto ? (
+              <div className="relative mb-5 h-60 w-full overflow-hidden rounded-lg lg:h-64">
+                <img
+                  src={currentPhoto}
+                  alt={`${card.name} 图片 ${activeIndex + 1}`}
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
+                {hasMultiple && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="上一张图片"
+                      onClick={showPrevious}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="下一张图片"
+                      onClick={showNext}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
+                    >
+                      ›
+                    </button>
+                    <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
+                      {photos.map((_, index) => (
+                        <button
+                          key={`photo-dot-${index}`}
+                          type="button"
+                          aria-label={`显示图片 ${index + 1}`}
+                          onClick={() => handleSelect(index)}
+                          className={
+                            "h-3 w-3 rounded-full border-2 border-white transition " +
+                            (index === activeIndex ? "bg-white" : "bg-white/50 hover:bg-white/80")
+                          }
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="mb-5 flex h-60 w-full items-center justify-center rounded-lg bg-slate-100 text-slate-500 lg:h-64">
+                暂无图片
+              </div>
+            )}
+
+            {/* 详细信息区域 */}
+            <div className="space-y-5 text-left">
+              {/* 基本信息 */}
+              <div className="flex items-start justify-between border-b pb-3">
+                <div className="flex-1">
+                  <span className="text-sm uppercase tracking-wide text-slate-500">{typeLabel}</span>
+                  <h3 className="mt-1 text-xl font-bold text-slate-900">{card.name}</h3>
+                  {card.address && (
+                    <p className="mt-2 flex items-start gap-2 text-slate-600">
+                      <span className="text-slate-400">📍</span>
+                      {card.address}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <span className="text-xl font-bold text-orange-600">{priceLabel}</span>
+                </div>
+              </div>
+
+              {/* 摘要 */}
+              {card.summary && (
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="leading-relaxed text-slate-700">{card.summary}</p>
+                </div>
+              )}
+
+              {/* 详细信息网格 */}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {ratingText && (
+                  <div className="rounded-lg border border-slate-200 bg-white p-3">
+                    <dt className="mb-1 text-xs uppercase tracking-wide text-slate-500">⭐ 评分</dt>
+                    <dd className="text-base font-semibold text-slate-900">{ratingText}</dd>
+                  </div>
+                )}
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <dt className="mb-1 text-xs uppercase tracking-wide text-slate-500">💰 价格</dt>
+                  <dd className="text-base font-semibold text-slate-900">{priceLabel}</dd>
+                </div>
+                {distance && (
+                  <div className="rounded-lg border border-slate-200 bg-white p-3">
+                    <dt className="mb-1 text-xs uppercase tracking-wide text-slate-500">📏 距离</dt>
+                    <dd className="text-base font-semibold text-slate-900">{distance}</dd>
+                  </div>
+                )}
+                {openStatus && (
+                  <div className="rounded-lg border border-slate-200 bg-white p-3">
+                    <dt className="mb-1 text-xs uppercase tracking-wide text-slate-500">🕒 营业状态</dt>
+                    <dd className="text-base font-semibold text-slate-900">{openStatus}</dd>
+                  </div>
+                )}
+              </div>
+
+              {/* 类型标签 */}
+              {typeList.length > 0 && (
+                <div>
+                  <p className="mb-2 text-sm uppercase tracking-wide text-slate-500">餐厅类型</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {typeList.map((type, index) => (
+                      <span
+                        key={`type-${index}`}
+                        className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+                      >
+                        {type}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 标签 */}
+              {card.tags && card.tags.length > 0 && (
+                <div>
+                  <p className="mb-2 text-sm uppercase tracking-wide text-slate-500">特色标签</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {card.tags.map((tag) => (
+                      <span
+                        key={`tag-${tag}`}
+                        className="rounded-full border border-orange-400 px-3 py-1 text-xs font-medium text-orange-600"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 推荐理由 */}
+              {card.why && card.why.length > 0 && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                  <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-orange-800">
+                    💡 为什么推荐这家
+                  </p>
+                  <ul className="space-y-1.5 text-sm text-slate-700">
+                    {card.why.map((reason, index) => (
+                      <li key={`reason-${index}`} className="flex items-start gap-2">
+                        <span className="mt-1 text-orange-500">•</span>
+                        <span>{reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* 操作按钮 */}
+              <div className="flex flex-col gap-3 pt-4 sm:flex-row">
+                {card.deeplink && (
+                  <a
+                    href={card.deeplink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 rounded-lg bg-orange-600 px-5 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-orange-700"
+                  >
+                    📍 获取路线
+                  </a>
+                )}
+                {!card.deeplink && card.google_maps_uri && (
+                  <a
+                    href={card.google_maps_uri}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 rounded-lg bg-orange-600 px-5 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-orange-700"
+                  >
+                    📍 在 Google Maps 上查看
+                  </a>
+                )}
+                <button
+                  onClick={onBack}
+                  className="flex-1 rounded-lg border-2 border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  返回列表
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -245,6 +264,9 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
 }
 
 const GENERIC_TYPES = new Set(["point_of_interest", "establishment", "food", "store", "health", "gym"]);
+const GAP_PX = 16; // Tailwind gap-4 size in px
+const RIGHT_SCROLL_EPSILON = 0.5;
+const TAIL_PADDING_PX = 32;
 
 function formatPriceLevel(value?: string): string {
   if (!value) {
@@ -493,15 +515,81 @@ function CardBody({ card }: { card: RestaurantCard }) {
   );
 }
 
-export function RecommendationGrid({ payload }: RecommendationGridProps) {
+export function RecommendationGrid({ payload, onRequestMore, disableRequestMore }: RecommendationGridProps) {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
   if (!payload.cards?.length) {
     return null;
   }
 
+  const updateScrollState = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      setCanScrollRight(false);
+      return;
+    }
+
+    const { scrollLeft, scrollWidth, clientWidth } = container;
+    const maxScrollLeft = Math.max(0, scrollWidth - clientWidth);
+    const remaining = Math.max(0, maxScrollLeft - scrollLeft);
+    setCanScrollRight(remaining > RIGHT_SCROLL_EPSILON);
+  }, []);
+
+  const scrollByCard = useCallback((direction: "left" | "right") => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const firstCard = container.querySelector("article") as HTMLElement | null;
+    const baseWidth = firstCard?.getBoundingClientRect().width ?? container.getBoundingClientRect().width / 2;
+    const amount = baseWidth + GAP_PX;
+
+    container.scrollBy({
+      left: direction === "left" ? -amount : amount,
+      behavior: "smooth",
+    });
+    requestAnimationFrame(updateScrollState);
+  }, [updateScrollState]);
+
+  const handleScroll = useCallback(() => {
+    updateScrollState();
+  }, [updateScrollState]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    handleScroll();
+
+    const handleResize = () => handleScroll();
+    window.addEventListener("resize", handleResize);
+
+    if (typeof window !== "undefined" && "ResizeObserver" in window) {
+      resizeObserverRef.current = new ResizeObserver(() => handleScroll());
+      resizeObserverRef.current.observe(container);
+    }
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
+    };
+  }, [handleScroll, payload.cards?.length]);
+
+  useEffect(() => {
+    handleScroll();
+  }, [handleScroll, payload.cards]);
+
   // 查找选中的餐厅
-  const selectedCard = selectedPlaceId 
+  const selectedCard = selectedPlaceId
     ? payload.cards.find((card) => card.place_id === selectedPlaceId)
     : null;
 
@@ -513,17 +601,76 @@ export function RecommendationGrid({ payload }: RecommendationGridProps) {
   // 否则显示卡片列表
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {payload.cards.map((card) => (
-          <article 
-            key={card.place_id} 
-            onClick={() => setSelectedPlaceId(card.place_id)}
-            className="flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm cursor-pointer hover:shadow-lg hover:border-orange-300 transition-all"
-          >
-            <CardImage card={card} />
-            <CardBody card={card} />
-          </article>
-        ))}
+      <div className="relative mx-auto max-w-6xl">
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white via-white/80 to-transparent transition-opacity duration-200 sm:w-16"
+          aria-hidden="true"
+          style={{ opacity: canScrollRight ? 1 : 0 }}
+        />
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="carousel-scroll flex gap-4 overflow-x-auto scroll-smooth pb-6 pl-4 pr-4 snap-x snap-mandatory sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8"
+        >
+          {payload.cards.map((card) => (
+            <article
+              key={card.place_id}
+              onClick={(event) => {
+                const container = scrollContainerRef.current;
+                if (container) {
+                  const cardElement = event.currentTarget as HTMLElement;
+                  const containerRect = container.getBoundingClientRect();
+                  const cardRect = cardElement.getBoundingClientRect();
+                  const currentLeft = container.scrollLeft;
+                  const cardCenter = cardRect.left + cardRect.width / 2;
+                  const containerCenter = containerRect.left + containerRect.width / 2;
+                  const delta = cardCenter - containerCenter;
+                  container.scrollTo({ left: currentLeft + delta, behavior: "smooth" });
+                }
+                setSelectedPlaceId(card.place_id);
+              }}
+              className="flex h-full w-[260px] flex-shrink-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-all hover:border-orange-300 hover:shadow-lg snap-start sm:w-[300px] md:w-[320px] xl:w-[360px]"
+            >
+              <CardImage card={card} />
+              <CardBody card={card} />
+            </article>
+          ))}
+          {onRequestMore ? (
+            <div className="flex h-full w-[260px] flex-shrink-0 items-center justify-center snap-start sm:w-[300px] md:w-[320px] xl:w-[360px]">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!disableRequestMore && onRequestMore) {
+                    void onRequestMore();
+                  }
+                }}
+                disabled={disableRequestMore}
+                className={
+                  "inline-flex h-100 min-w-[110px] items-center justify-center gap-2 rounded-full border border-brand/50 bg-white px-4 text-sm font-semibold text-brand transition hover:bg-brand/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand " +
+                  (disableRequestMore ? "cursor-not-allowed opacity-60" : "")
+                }
+              >
+                <span>More restaurants</span>
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          ) : null}
+          <div className="flex h-full w-14 flex-shrink-0 items-center justify-center snap-start sm:w-16">
+            <button
+              type="button"
+              aria-label="Scroll right"
+              onClick={() => scrollByCard("right")}
+              disabled={!canScrollRight}
+              className={
+                "inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-xl text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand " +
+                (canScrollRight ? "" : "cursor-not-allowed opacity-40")
+              }
+            >
+              <span aria-hidden="true">›</span>
+            </button>
+          </div>
+          <div aria-hidden="true" className="flex-shrink-0" style={{ width: `${TAIL_PADDING_PX}px` }} />
+        </div>
       </div>
       {payload.rationale ? (
         <p className="rounded-lg border border-dashed border-brand/40 bg-brand/5 p-4 text-sm text-slate-700">
