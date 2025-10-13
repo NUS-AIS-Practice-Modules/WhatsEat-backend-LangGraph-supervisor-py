@@ -7,6 +7,7 @@ from whats_eat.agents.user_profile_agent import build_user_profile_agent
 from whats_eat.agents.recommender_agent import build_recommender_agent
 from whats_eat.agents.summarizer_agent import build_summarizer_agent
 from whats_eat.agents.route_agent import build_route_agent
+from whats_eat.agents.RAG_agent import build_rag_agent
 
 def build_app():
     places = build_places_agent()
@@ -14,6 +15,7 @@ def build_app():
     recommender = build_recommender_agent()
     summarizer = build_summarizer_agent()
     route = build_route_agent()
+    rag = build_rag_agent()
 
     # Optional extra tool: forward a worker's exact wording to the user
     forward_tool = create_forward_message_tool()
@@ -27,10 +29,11 @@ def build_app():
         "  • recommender_agent – ranks, filters, or selects items (e.g., recommends top places based on taste, location, or user preferences).\n"
         "  • summarizer_agent – combines and refines results from other agents to generate the final, human-readable response.\n"
         "  • route_agent – computes routes and generates interactive map views GIVEN coordinates (lat/long); does not perform geocoding.\n"
+        "  • rag_agent – performs retrieval-augmented generation for answering questions using knowledge base or document search.\n"
         "- Routing guide:\n"
         "  • Location/place search or address→coordinates (user or restaurant) → places_agent\n"
         "  • YouTube history, channels, or interest-based profiling → user_profile_agent\n"
-      
+        "  • Knowledge-based questions or document retrieval → rag_agent\n"
         "  • Ranking, comparison, or shortlisting → recommender_agent\n"
         "  • Routing / map visualization when coordinates are known → route_agent\n"
         "  • When all required information has been gathered, produce the final answer → summarizer_agent\n"
@@ -42,17 +45,19 @@ def build_app():
         "  • Recommendations: places_agent → recommender_agent → summarizer_agent\n"
         "  • Route/map: places_agent (geocode addresses to lat/long) → route_agent (compute route & map) → summarizer_agent\n"
         "- Pass only coordinates (lat/long) to route_agent; do not pass raw addresses.\n"
-        "- The summarizer_agent always produces the final output shown to the user."
+        "- The summarizer_agent always produces the final output shown to the user.\n"
+        "- IMPORTANT: Once summarizer_agent provides the final answer, the conversation is COMPLETE. Do not route to any other agents.\n"
+        "- If you receive a response from summarizer_agent, forward it directly to the user and STOP."
 
 
 )
 
     workflow = create_supervisor(
-        agents=[places, user_profile, recommender, summarizer, route],
-        model=init_chat_model("openai:gpt-5-mini"),
+        agents=[places, user_profile, recommender, summarizer, route, rag],
+        model=init_chat_model("openai:gpt-4o-mini"),
         tools=[forward_tool],              # your handoff tools will be auto-added
         prompt=supervisor_prompt,
-        # add_handoff_back_messages=True,    # include “transfer back” messages
+        # add_handoff_back_messages=True,    # include "transfer back" messages
         add_handoff_messages=False,  # keep graph memory compact for API responses
         add_handoff_back_messages=False,  # return only the final AI message to clients
         output_mode="last_message",        # or "full_history" to include full traces

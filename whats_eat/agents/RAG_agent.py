@@ -9,7 +9,7 @@ from whats_eat.tools.RAG import (
 
 def build_rag_agent():
     return create_react_agent(
-        model=init_chat_model("openai:gpt-5-mini"),
+        model=init_chat_model("openai:gpt-4o-mini"),
         tools=[process_places_data, query_similar_places_tool],
         prompt=(
             "You are an execution agent (rag_agent) in the \"What's Eat\" system.\n"
