@@ -37,6 +37,13 @@ export function ChatPanel({
     reset();
   }, [reset]);
 
+  const handleRequestMore = useCallback(async () => {
+    if (status !== "ready" || isStreaming) {
+      return;
+    }
+    await sendMessage("Please recommend more restaurants.", userLocation);
+  }, [isStreaming, sendMessage, status, userLocation]);
+
   return (
     <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white shadow-lg">
       <div className="flex flex-col gap-3 px-6 pt-6">
@@ -49,7 +56,12 @@ export function ChatPanel({
         </p>
       </div>
       <div className="flex-1 overflow-hidden px-2">
-        <ChatTranscript messages={messages} isStreaming={isStreaming} />
+        <ChatTranscript
+          messages={messages}
+          isStreaming={isStreaming}
+          onRequestMore={handleRequestMore}
+          disableRequestMore={status !== "ready" || isStreaming}
+        />
       </div>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
         {userLocation && (
