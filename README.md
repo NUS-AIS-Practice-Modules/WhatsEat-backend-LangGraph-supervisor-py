@@ -122,7 +122,7 @@ cp .env.example .env
 
 At minimum you need:
 
-- `OPENAI_API_KEY` for the `init_chat_model("openai:gpt-4.1")` call used by the supervisor.
+- `OPENAI_API_KEY` for the `init_chat_model("openai:gpt-5-mini")` call used by the supervisor.
 - `GOOGLE_MAPS_API_KEY` so the Places and route tools can call the Google APIs.
 
 ### 2. Start the LangGraph backend
