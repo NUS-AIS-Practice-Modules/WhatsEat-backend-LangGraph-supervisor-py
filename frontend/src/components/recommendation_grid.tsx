@@ -512,8 +512,10 @@ export function RecommendationGrid({ payload }: RecommendationGridProps) {
     }
 
     const { scrollLeft, scrollWidth, clientWidth } = container;
-    setCanScrollLeft(scrollLeft > 16);
-    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 16);
+    const maxScrollLeft = Math.max(0, scrollWidth - clientWidth);
+
+    setCanScrollLeft(scrollLeft > 1);
+    setCanScrollRight(scrollLeft < maxScrollLeft - 1);
   }, []);
 
   const scrollByCard = useCallback((direction: "left" | "right") => {
@@ -523,7 +525,7 @@ export function RecommendationGrid({ payload }: RecommendationGridProps) {
     }
 
     const firstCard = container.firstElementChild as HTMLElement | null;
-    const baseWidth = firstCard?.clientWidth ?? container.clientWidth / 2;
+    const baseWidth = firstCard?.getBoundingClientRect().width ?? container.getBoundingClientRect().width / 2;
     const gap = 16; // gap-4 in Tailwind
     const amount = baseWidth + gap;
 
@@ -570,8 +572,18 @@ export function RecommendationGrid({ payload }: RecommendationGridProps) {
     <div className="space-y-4">
       <div className="relative">
         <div
+          className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-white via-white/80 to-transparent transition-opacity duration-200"
+          aria-hidden="true"
+          style={{ opacity: canScrollLeft ? 1 : 0 }}
+        />
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-white via-white/80 to-transparent transition-opacity duration-200"
+          aria-hidden="true"
+          style={{ opacity: canScrollRight ? 1 : 0 }}
+        />
+        <div
           ref={scrollContainerRef}
-          className="flex gap-4 overflow-x-auto scroll-smooth pb-4 snap-x snap-mandatory"
+          className="carousel-scroll flex gap-4 overflow-x-auto scroll-smooth pb-4 pl-1 pr-1 snap-x snap-mandatory"
         >
           {payload.cards.map((card) => (
             <article
@@ -590,7 +602,7 @@ export function RecommendationGrid({ payload }: RecommendationGridProps) {
             type="button"
             aria-label="Scroll left"
             onClick={() => scrollByCard("left")}
-            className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/90 p-2 text-slate-700 shadow ring-1 ring-black/5 transition hover:bg-white"
+            className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/95 p-2 text-slate-700 shadow ring-1 ring-black/5 transition hover:bg-white"
           >
             ‹
           </button>
@@ -601,7 +613,7 @@ export function RecommendationGrid({ payload }: RecommendationGridProps) {
             type="button"
             aria-label="Scroll right"
             onClick={() => scrollByCard("right")}
-            className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/90 p-2 text-slate-700 shadow ring-1 ring-black/5 transition hover:bg-white"
+            className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/95 p-2 text-slate-700 shadow ring-1 ring-black/5 transition hover:bg-white"
           >
             ›
           </button>
