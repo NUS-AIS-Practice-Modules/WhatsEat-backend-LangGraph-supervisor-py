@@ -63,7 +63,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
           onClick={onBack}
           className="text-white text-sm bg-orange-700 hover:bg-orange-800 px-4 py-2 rounded transition-colors"
         >
-          ← 返回列表
+          ← Back to List
         </button>
       </div>
 
@@ -75,7 +75,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
             <div className="relative h-96 w-full overflow-hidden rounded-lg mb-6">
               <img
                 src={currentPhoto}
-                alt={`${card.name} 图片 ${activeIndex + 1}`}
+                alt={`${card.name} photo ${activeIndex + 1}`}
                 loading="lazy"
                 className="h-full w-full object-cover"
               />
@@ -83,7 +83,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
                 <>
                   <button
                     type="button"
-                    aria-label="上一张图片"
+                    aria-label="Previous image"
                     onClick={showPrevious}
                     className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
                   >
@@ -91,7 +91,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
                   </button>
                   <button
                     type="button"
-                    aria-label="下一张图片"
+                    aria-label="Next image"
                     onClick={showNext}
                     className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
                   >
@@ -100,10 +100,10 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
                   <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
                     {photos.map((_, index) => (
                       <button
-                        key={`photo-dot-${index}`}
-                        type="button"
-                        aria-label={`显示图片 ${index + 1}`}
-                        onClick={() => handleSelect(index)}
+                      key={`photo-dot-${index}`}
+                      type="button"
+                      aria-label={`Show image ${index + 1}`}
+                      onClick={() => handleSelect(index)}
                         className={
                           "h-3 w-3 rounded-full border-2 border-white transition " +
                           (index === activeIndex ? "bg-white" : "bg-white/50 hover:bg-white/80")
@@ -113,13 +113,13 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
                   </div>
                 </>
               )}
-              {/* 右下角地图切换按钮 */}
+              {/* 左下角地图切换按钮 */}
               {userLocation && card.address && (
                 <button
                   type="button"
                   onClick={toggleMapView}
-                  className="absolute bottom-4 right-4 w-24 h-24 rounded-xl overflow-hidden border-3 border-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  aria-label="切换到导航地图"
+                  className="absolute bottom-4 left-4 w-24 h-24 rounded-xl overflow-hidden border-3 border-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  aria-label="Switch to navigation map"
                 >
                   <div className="w-full h-full bg-orange-500 flex items-center justify-center">
                     <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -131,7 +131,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
             </div>
           ) : (
             <div className="flex h-96 w-full items-center justify-center rounded-lg bg-slate-100 text-slate-500 mb-6">
-              暂无图片
+              No images available
             </div>
           )
         ) : (
@@ -172,7 +172,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
       if (status === 'OK') {
         dirRenderer.setDirections(res);
       } else {
-        alert('无法加载路线: ' + status);
+        alert('Unable to load route: ' + status);
       }
     });
   }
@@ -182,18 +182,18 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
 </body>
 </html>`}
                 className="h-full w-full border-0"
-                title="导航地图"
+                title="Navigation Map"
               />
-              {/* 右下角照片切换按钮 */}
+              {/* 左下角照片切换按钮 */}
               <button
                 type="button"
                 onClick={toggleMapView}
-                className="absolute bottom-4 right-4 w-24 h-24 rounded-xl overflow-hidden border-3 border-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500 z-10"
-                aria-label="切换到轮播图"
+                className="absolute bottom-4 left-4 w-24 h-24 rounded-xl overflow-hidden border-3 border-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500 z-10"
+                aria-label="Back to gallery"
               >
                 <img
                   src={photos[lastPhotoIndex] ?? photos[0]}
-                  alt="返回轮播图"
+                  alt="Back to gallery"
                   className="w-full h-full object-cover"
                 />
               </button>
@@ -231,23 +231,23 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {ratingText && (
               <div className="bg-white border border-slate-200 rounded-lg p-4">
-                <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">⭐ 评分</dt>
+                <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">⭐ Rating</dt>
                 <dd className="text-lg font-semibold text-slate-900">{ratingText}</dd>
               </div>
             )}
             <div className="bg-white border border-slate-200 rounded-lg p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">💰 价格</dt>
+              <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">💰 Price</dt>
               <dd className="text-lg font-semibold text-slate-900">{priceLabel}</dd>
             </div>
             {distance && (
               <div className="bg-white border border-slate-200 rounded-lg p-4">
-                <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">📏 距离</dt>
+                <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">📏 Distance</dt>
                 <dd className="text-lg font-semibold text-slate-900">{distance}</dd>
               </div>
             )}
             {openStatus && (
               <div className="bg-white border border-slate-200 rounded-lg p-4">
-                <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">🕒 营业状态</dt>
+                <dt className="text-xs uppercase tracking-wide text-slate-500 mb-2">🕒 Status</dt>
                 <dd className="text-lg font-semibold text-slate-900">{openStatus}</dd>
               </div>
             )}
@@ -256,7 +256,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
           {/* 类型标签 */}
           {typeList.length > 0 && (
             <div>
-              <p className="text-sm uppercase tracking-wide text-slate-500 mb-3">餐厅类型</p>
+              <p className="text-sm uppercase tracking-wide text-slate-500 mb-3">Restaurant Types</p>
               <div className="flex flex-wrap gap-2">
                 {typeList.map((type, index) => (
                   <span
@@ -273,7 +273,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
           {/* 标签 */}
           {card.tags && card.tags.length > 0 && (
             <div>
-              <p className="text-sm uppercase tracking-wide text-slate-500 mb-3">特色标签</p>
+              <p className="text-sm uppercase tracking-wide text-slate-500 mb-3">Features</p>
               <div className="flex flex-wrap gap-2">
                 {card.tags.map((tag) => (
                   <span
@@ -291,7 +291,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
           {card.why && card.why.length > 0 && (
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-5">
               <p className="text-sm font-semibold uppercase tracking-wide text-orange-800 mb-3">
-                💡 为什么推荐这家
+                💡 Why We Recommend
               </p>
               <ul className="space-y-2 text-slate-700">
                 {card.why.map((reason, index) => (
@@ -313,7 +313,7 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
                 rel="noreferrer"
                 className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-6 rounded-lg text-center transition-colors"
               >
-                📍 获取路线
+                📍 Get Directions
               </a>
             )}
             {!card.deeplink && card.google_maps_uri && (
@@ -323,14 +323,14 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
                 rel="noreferrer"
                 className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-6 rounded-lg text-center transition-colors"
               >
-                📍 在 Google Maps 上查看
+                📍 View on Google Maps
               </a>
             )}
             <button
               onClick={onBack}
               className="flex-1 bg-white border-2 border-slate-300 text-slate-700 font-medium py-3 px-6 rounded-lg hover:bg-slate-50 transition-colors"
             >
-              返回列表
+              Back to List
             </button>
           </div>
         </div>
