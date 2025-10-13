@@ -263,14 +263,15 @@ def rank_restaurants_by_profile(
 @tool("filter_by_attributes")
 def filter_by_attributes(
     candidates: List[Dict[str, Any]],
-    required_attributes: Dict[str, Any]
+    required_attributes: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Filter restaurants by hard requirements before ranking.
     
     Args:
         candidates: List of restaurant dicts
-        required_attributes: Hard filters (e.g., {"min_rating": 4.0, "max_price": "MODERATE"})
+        required_attributes: Optional hard filters (e.g., {"min_rating": 4.0, "max_price": "MODERATE"}).
+                           If not provided, returns all candidates unfiltered.
     
     Returns:
         Dictionary with filtered results and filter stats
@@ -282,6 +283,15 @@ def filter_by_attributes(
         - exclude_types: Must NOT include these types
         - open_now: Boolean, filter by open status
     """
+    # If no filters provided, return all candidates
+    if not required_attributes:
+        return {
+            "filtered_results": candidates,
+            "original_count": len(candidates),
+            "filtered_count": len(candidates),
+            "filters_applied": {}
+        }
+    
     if not candidates:
         return {
             "filtered_results": [],
