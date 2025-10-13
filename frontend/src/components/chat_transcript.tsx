@@ -3,6 +3,22 @@ import * as ScrollArea from "@radix-ui/react-scroll-area";
 import clsx from "clsx";
 import type { ChatMessage } from "../hooks/use_langgraph_chat";
 import { RecommendationGrid } from "./recommendation_grid";
+import type { SupervisorPayload } from "../types/whatseat";
+
+function buildPayloadSignature(payload: SupervisorPayload): string {
+  const cardKeys = payload.cards.map((card) => {
+    const identifier = card.place_id?.trim();
+    if (identifier && identifier.length > 0) {
+      return identifier;
+    }
+
+    const name = card.name?.trim().toLowerCase() ?? "";
+    const address = card.address?.trim().toLowerCase() ?? "";
+    return `${name}::${address}`;
+  });
+
+  return JSON.stringify({ cards: cardKeys });
+}
 
 interface ChatTranscriptProps {
   messages: ChatMessage[];
@@ -31,7 +47,7 @@ export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRe
         continue;
       }
 
-      const signature = JSON.stringify(payload);
+      const signature = buildPayloadSignature(payload);
       const shouldRender = signature !== previousSignature;
       visibility.set(message.id, shouldRender);
       previousSignature = signature;
@@ -52,7 +68,7 @@ export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRe
   }
 
   return (
-     <ScrollArea.Root className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white">
+    <ScrollArea.Root className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white">
       <ScrollArea.Viewport className="h-full w-full">
         <div className="flex flex-col gap-4 p-6">
           {messages.map((message) => {
