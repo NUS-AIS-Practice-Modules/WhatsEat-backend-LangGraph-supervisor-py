@@ -1,7 +1,24 @@
+import { useMemo } from "react";
 import * as ScrollArea from "@radix-ui/react-scroll-area";
 import clsx from "clsx";
 import type { ChatMessage } from "../hooks/use_langgraph_chat";
 import { RecommendationGrid } from "./recommendation_grid";
+import type { SupervisorPayload } from "../types/whatseat";
+
+function buildPayloadSignature(payload: SupervisorPayload): string {
+  const cardKeys = payload.cards.map((card) => {
+    const identifier = card.place_id?.trim();
+    if (identifier && identifier.length > 0) {
+      return identifier;
+    }
+
+    const name = card.name?.trim().toLowerCase() ?? "";
+    const address = card.address?.trim().toLowerCase() ?? "";
+    return `${name}::${address}`;
+  });
+
+  return JSON.stringify({ cards: cardKeys });
+}
 
 interface ChatTranscriptProps {
   messages: ChatMessage[];
@@ -11,6 +28,34 @@ interface ChatTranscriptProps {
 }
 
 export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRequestMore }: ChatTranscriptProps) {
+  // LangGraph streams the assistant's thinking process as multiple messages. For
+  // recommendation runs we only want to render the restaurant grid once, even
+  // if the supervisor emits repeated payloads while summarising the answer.
+  const payloadVisibility = useMemo(() => {
+    const visibility = new Map<string, boolean>();
+    let previousSignature: string | null = null;
+
+    for (const message of messages) {
+      if (message.role !== "assistant") {
+        previousSignature = null;
+        continue;
+      }
+
+      const payload = message.payload;
+      if (!payload || !payload.cards?.length) {
+        previousSignature = null;
+        continue;
+      }
+
+      const signature = buildPayloadSignature(payload);
+      const shouldRender = signature !== previousSignature;
+      visibility.set(message.id, shouldRender);
+      previousSignature = signature;
+    }
+
+    return visibility;
+  }, [messages]);
+
   if (!messages.length) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 p-6 text-center text-slate-500">
