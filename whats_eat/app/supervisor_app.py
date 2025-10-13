@@ -1,6 +1,5 @@
 # app/supervisor_app.py
 from langchain.chat_models import init_chat_model
-from langchain_core.runnables import RunnableLambda
 from whats_eat.langgraph_supervisor import create_supervisor, create_forward_message_tool  # your package
 
 from whats_eat.agents.places_agent import build_places_agent
@@ -8,7 +7,10 @@ from whats_eat.agents.user_profile_agent import build_user_profile_agent
 from whats_eat.agents.recommender_agent import build_recommender_agent
 from whats_eat.agents.summarizer_agent import build_summarizer_agent
 from whats_eat.agents.route_agent import build_route_agent
-from whats_eat.app.postprocessing import dedupe_supervisor_output
+from whats_eat.app.postprocessing import (
+    attach_output_postprocessor,
+    dedupe_supervisor_output,
+)
 
 def build_app():
     places = build_places_agent()
@@ -63,4 +65,5 @@ def build_app():
     )
 
     compiled = workflow.compile()
-    return compiled | RunnableLambda(dedupe_supervisor_output)
+    attach_output_postprocessor(compiled, dedupe_supervisor_output)
+    return compiled

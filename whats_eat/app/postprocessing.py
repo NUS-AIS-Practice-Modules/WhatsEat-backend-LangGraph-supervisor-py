@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator, Iterator
 from copy import deepcopy
+from types import MethodType
 from typing import Any, Callable, Iterable, Optional
 
 
 JsonSerializer = Callable[[dict[str, Any]], Any]
 """Callable that serialises a JSON payload back to the message format."""
+
+OutputPostprocessor = Callable[[dict[str, Any]], dict[str, Any]]
+"""Callable that transforms an invocation result emitted by the graph."""
 
 
 def dedupe_supervisor_output(output: dict[str, Any]) -> dict[str, Any]:
@@ -48,6 +53,81 @@ def dedupe_supervisor_output(output: dict[str, Any]) -> dict[str, Any]:
         _replace_message_content(messages, serialised_content)
 
     return output
+
+
+def attach_output_postprocessor(app: Any, postprocessor: OutputPostprocessor) -> Any:
+    """Attach ``postprocessor`` to a compiled LangGraph application in-place.
+
+    The LangGraph runtime expects ``app`` to be an instance of ``CompiledGraph``.
+    We keep that instance intact so that server discovery logic still recognises
+    it, but wrap the public invocation methods so their return values pass
+    through ``postprocessor`` before being surfaced to callers.  Only objects
+    that look like supervisor outputs (mappings containing ``"messages"``)
+    are processed; other payloads stream through untouched.
+    """
+
+    def _process_result(result: Any) -> Any:
+        if isinstance(result, dict) and "messages" in result:
+            return postprocessor(result)
+        return result
+
+    def _wrap_sync(original: Callable[..., Any]) -> Callable[..., Any]:
+        def _wrapped(self: Any, *args: Any, **kwargs: Any) -> Any:
+            return _process_result(original(*args, **kwargs))
+
+        return _wrapped
+
+    def _wrap_async(original: Callable[..., Any]) -> Callable[..., Any]:
+        async def _wrapped(self: Any, *args: Any, **kwargs: Any) -> Any:
+            return _process_result(await original(*args, **kwargs))
+
+        return _wrapped
+
+    def _wrap_batch(original: Callable[..., list[Any]]) -> Callable[..., list[Any]]:
+        def _wrapped(self: Any, *args: Any, **kwargs: Any) -> list[Any]:
+            return [_process_result(item) for item in original(*args, **kwargs)]
+
+        return _wrapped
+
+    def _wrap_abatch(original: Callable[..., Any]) -> Callable[..., Any]:
+        async def _wrapped(self: Any, *args: Any, **kwargs: Any) -> list[Any]:
+            results = await original(*args, **kwargs)
+            return [_process_result(item) for item in results]
+
+        return _wrapped
+
+    def _wrap_stream(original: Callable[..., Iterator[Any]]) -> Callable[..., Iterator[Any]]:
+        def _wrapped(self: Any, *args: Any, **kwargs: Any) -> Iterator[Any]:
+            for item in original(*args, **kwargs):
+                yield _process_result(item)
+
+        return _wrapped
+
+    def _wrap_astream(original: Callable[..., AsyncIterator[Any]]) -> Callable[..., AsyncIterator[Any]]:
+        async def _wrapped(self: Any, *args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+            async for item in original(*args, **kwargs):
+                yield _process_result(item)
+
+        return _wrapped
+
+    def _maybe_wrap(name: str, factory: Callable[[Callable[..., Any]], Callable[..., Any]]) -> None:
+        original = getattr(app, name, None)
+        if original is None or not callable(original):
+            return
+
+        wrapped = factory(original)
+        setattr(app, name, MethodType(wrapped, app))
+
+    _maybe_wrap("invoke", _wrap_sync)
+    _maybe_wrap("ainvoke", _wrap_async)
+    _maybe_wrap("batch", _wrap_batch)
+    _maybe_wrap("abatch", _wrap_abatch)
+    _maybe_wrap("stream", _wrap_stream)
+    _maybe_wrap("astream", _wrap_astream)
+    _maybe_wrap("stream_events", _wrap_stream)
+    _maybe_wrap("astream_events", _wrap_astream)
+
+    return app
 
 
 def _try_parse_json_content(content: Any) -> tuple[Optional[dict[str, Any]], Optional[JsonSerializer]]:
@@ -259,5 +339,5 @@ def _replace_message_content(messages: list[Any], new_content: Any) -> None:
         messages[-1] = clone
 
 
-__all__ = ["dedupe_supervisor_output"]
+__all__ = ["dedupe_supervisor_output", "attach_output_postprocessor"]
 
