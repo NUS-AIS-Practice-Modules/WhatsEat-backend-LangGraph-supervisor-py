@@ -397,5 +397,175 @@ def embed_user_preferences(
         }
 
 
-__all__ = ["yt_list_subscriptions", "yt_list_liked_videos", "embed_user_preferences"]
+@tool("generate_embedding_profile")
+def generate_embedding_profile(
+    youtube_data: Dict[str, Any],
+    model: str = "text-embedding-3-small",
+    normalize: bool = True
+) -> Dict[str, Any]:
+    """
+    Generate embedding from YouTube profile data (long-term taste preferences).
+    
+    Args:
+        youtube_data: Dictionary with keys 'liked_videos', 'subscriptions', 'keywords'
+        model: OpenAI embedding model to use
+        normalize: Whether to L2-normalize the resulting vector
+    
+    Returns:
+        Dictionary with model, embedding, dim, normalized, error fields
+    """
+    # Construct profile text from YouTube data
+    liked_videos = youtube_data.get('liked_videos', [])
+    subscriptions = youtube_data.get('subscriptions', [])
+    keywords = youtube_data.get('keywords', [])
+    
+    profile_text = f"""
+User's food preferences based on YouTube activity:
+
+Liked videos: {', '.join(liked_videos) if liked_videos else 'None'}
+
+Subscribed channels: {', '.join(subscriptions) if subscriptions else 'None'}
+
+Key interests: {', '.join(keywords) if keywords else 'None'}
+
+Summary: User shows preferences for various cuisines and dining styles based on their YouTube engagement.
+    """.strip()
+    
+    # Use the existing embed_user_preferences function
+    result = embed_user_preferences.invoke({
+        "text": profile_text,
+        "model": model,
+        "normalize": normalize
+    })
+    
+    return result
+
+
+@tool("generate_embedding_intent")
+def generate_embedding_intent(
+    user_input: Dict[str, Any],
+    model: str = "text-embedding-3-small",
+    normalize: bool = True
+) -> Dict[str, Any]:
+    """
+    Generate embedding from current user intent (short-term dining request).
+    
+    Args:
+        user_input: Dictionary with budget, location, party_size, dietary_restrictions, 
+                   preferences, occasion, time
+        model: OpenAI embedding model to use
+        normalize: Whether to L2-normalize the resulting vector
+    
+    Returns:
+        Dictionary with model, embedding, dim, normalized, error fields
+    """
+    # Construct intent text from user input
+    budget = user_input.get('budget', 'not specified')
+    location = user_input.get('location', 'not specified')
+    party_size = user_input.get('party_size', 'not specified')
+    dietary_restrictions = user_input.get('dietary_restrictions', [])
+    preferences = user_input.get('preferences', 'not specified')
+    occasion = user_input.get('occasion', 'casual dining')
+    time = user_input.get('time', 'not specified')
+    
+    intent_text = f"""
+Current dining request:
+Budget: {budget}
+Location: {location}
+Party size: {party_size} people
+Dietary restrictions: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
+Preferences: {preferences}
+Occasion: {occasion}
+Time: {time}
+    """.strip()
+    
+    # Use the existing embed_user_preferences function
+    result = embed_user_preferences.invoke({
+        "text": intent_text,
+        "model": model,
+        "normalize": normalize
+    })
+    
+    return result
+
+
+@tool("fuse_embeddings")
+def fuse_embeddings(
+    profile_embedding: List[float],
+    intent_embedding: List[float],
+    alpha: float = 0.5
+) -> Dict[str, Any]:
+    """
+    Fuse profile and intent embeddings with alpha weighting.
+    
+    Args:
+        profile_embedding: Long-term taste embedding vector
+        intent_embedding: Current intent embedding vector
+        alpha: Weight for profile (0-1), (1-alpha) will be weight for intent
+               Default 0.5 = equal weighting
+    
+    Returns:
+        Dictionary with fused embedding, dim, alpha, error fields
+    """
+    try:
+        # Validate inputs
+        if not profile_embedding or not intent_embedding:
+            return {
+                "embedding": [],
+                "dim": 0,
+                "alpha": alpha,
+                "error": "One or both embeddings are empty"
+            }
+        
+        if len(profile_embedding) != len(intent_embedding):
+            return {
+                "embedding": [],
+                "dim": 0,
+                "alpha": alpha,
+                "error": f"Dimension mismatch: {len(profile_embedding)} vs {len(intent_embedding)}"
+            }
+        
+        if not (0 <= alpha <= 1):
+            return {
+                "embedding": [],
+                "dim": 0,
+                "alpha": alpha,
+                "error": f"Alpha must be between 0 and 1, got {alpha}"
+            }
+        
+        # Weighted combination
+        fused = [
+            alpha * p + (1 - alpha) * i
+            for p, i in zip(profile_embedding, intent_embedding)
+        ]
+        
+        # L2 normalize the fused vector
+        norm = sum(x * x for x in fused) ** 0.5
+        if norm > 0:
+            fused = [x / norm for x in fused]
+        
+        return {
+            "embedding": fused,
+            "dim": len(fused),
+            "alpha": alpha,
+            "error": None
+        }
+    
+    except Exception as exc:
+        return {
+            "embedding": [],
+            "dim": 0,
+            "alpha": alpha,
+            "error": f"{type(exc).__name__}: {exc}"
+        }
+
+
+__all__ = [
+    "yt_list_subscriptions",
+    "yt_list_liked_videos",
+    "embed_user_preferences",
+    "generate_embedding_profile",
+    "generate_embedding_intent",
+    "fuse_embeddings"
+]
 
