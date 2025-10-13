@@ -49,7 +49,7 @@ def build_app():
 
     workflow = create_supervisor(
         agents=[places, user_profile, recommender, summarizer, route],
-        model=init_chat_model("openai:gpt-4.1"),
+        model=init_chat_model("openai:gpt-5-mini"),
         tools=[forward_tool],              # your handoff tools will be auto-added
         prompt=supervisor_prompt,
         add_handoff_back_messages=True,    # include “transfer back” messages
