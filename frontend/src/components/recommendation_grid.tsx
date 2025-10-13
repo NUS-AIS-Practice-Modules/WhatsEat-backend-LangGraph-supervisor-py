@@ -54,64 +54,6 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
   const currentPhoto = photos.length > 0 ? photos[activeIndex] ?? photos[0] : null;
   const hasMultiple = photos.length > 1;
 
-  // 使用 Interactive_Map.ipynb 的逻辑生成导航地图 HTML
-  const mapHtml = useMemo(() => {
-    if (!userLocation || !card.address) return null;
-
-    const BROWSER_KEY = "AIzaSyB5yMwQo7k6ilAjWviqhVph_UrGKQMXL6Q";
-    const originLat = userLocation.latitude;
-    const originLng = userLocation.longitude;
-    
-    // 使用餐厅地址作为目的地
-    const destAddr = card.address;
-
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Route Map</title>
-  <style>
-    body { margin:0; padding:0; }
-    #map { width: 100%; height: 100%; }
-  </style>
-</head>
-<body>
-<div id="map"></div>
-<script>
-  const ORIGIN = { lat: ${originLat}, lng: ${originLng} };
-  const DEST_ADDR = "${destAddr.replace(/"/g, '\\"')}";
-
-  let map, dirSvc, dirRenderer;
-  function initMap() {
-    map = new google.maps.Map(document.getElementById('map'), {
-      center: ORIGIN, zoom: 13
-    });
-    dirSvc = new google.maps.DirectionsService();
-    dirRenderer = new google.maps.DirectionsRenderer({ map: map });
-
-    dirSvc.route({
-      origin: ORIGIN,
-      destination: DEST_ADDR,
-      travelMode: google.maps.TravelMode.DRIVING
-    }, (res, status) => {
-      if (status === 'OK') {
-        dirRenderer.setDirections(res);
-      } else {
-        console.error('Directions request failed: ' + status);
-      }
-    });
-  }
-  window.initMap = initMap;
-</script>
-<script async defer src="https://maps.googleapis.com/maps/api/js?key=${BROWSER_KEY}&callback=initMap"></script>
-</body>
-</html>
-`;
-    
-    return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-  }, [userLocation, card.address]);
-
   return (
     <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
       {/* 顶部导航栏 */}
@@ -126,98 +68,137 @@ function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCar
       </div>
 
       <div className="p-6">
-        {/* 图片轮播/地图区域 */}
-        {currentPhoto || mapHtml ? (
-          <div className="relative h-96 w-full overflow-hidden rounded-lg mb-6">
-            {/* 主视图 */}
-            {!showMap ? (
-              // 轮播图视图
-              currentPhoto ? (
-                <img
-                  src={currentPhoto}
-                  alt={`${card.name} 图片 ${activeIndex + 1}`}
-                  loading="lazy"
-                  className="h-full w-full object-cover"
-                />
-              ) : null
-            ) : (
-              // 地图视图
-              mapHtml ? (
-                <iframe
-                  src={mapHtml}
-                  className="h-full w-full border-0"
-                  title="导航地图"
-                  sandbox="allow-scripts allow-same-origin"
-                />
-              ) : null
-            )}
-
-            {/* 轮播图控制按钮 */}
-            {!showMap && hasMultiple && (
-              <>
+        {/* 图片轮播/地图区域 - 根据模式切换不同的容器 */}
+        {!showMap ? (
+          // 轮播图模式 - 使用原来的图片容器
+          currentPhoto ? (
+            <div className="relative h-96 w-full overflow-hidden rounded-lg mb-6">
+              <img
+                src={currentPhoto}
+                alt={`${card.name} 图片 ${activeIndex + 1}`}
+                loading="lazy"
+                className="h-full w-full object-cover"
+              />
+              {hasMultiple && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="上一张图片"
+                    onClick={showPrevious}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="下一张图片"
+                    onClick={showNext}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
+                  >
+                    ›
+                  </button>
+                  <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
+                    {photos.map((_, index) => (
+                      <button
+                        key={`photo-dot-${index}`}
+                        type="button"
+                        aria-label={`显示图片 ${index + 1}`}
+                        onClick={() => handleSelect(index)}
+                        className={
+                          "h-3 w-3 rounded-full border-2 border-white transition " +
+                          (index === activeIndex ? "bg-white" : "bg-white/50 hover:bg-white/80")
+                        }
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+              {/* 右下角地图切换按钮 */}
+              {userLocation && card.address && (
                 <button
                   type="button"
-                  aria-label="上一张图片"
-                  onClick={showPrevious}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
+                  onClick={toggleMapView}
+                  className="absolute bottom-4 right-4 w-24 h-24 rounded-xl overflow-hidden border-3 border-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  aria-label="切换到导航地图"
                 >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  aria-label="下一张图片"
-                  onClick={showNext}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white text-2xl transition hover:bg-black/70"
-                >
-                  ›
-                </button>
-                <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-                  {photos.map((_, index) => (
-                    <button
-                      key={`photo-dot-${index}`}
-                      type="button"
-                      aria-label={`显示图片 ${index + 1}`}
-                      onClick={() => handleSelect(index)}
-                      className={
-                        "h-3 w-3 rounded-full border-2 border-white transition " +
-                        (index === activeIndex ? "bg-white" : "bg-white/50 hover:bg-white/80")
-                      }
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* 右下角缩略图切换框 */}
-            {mapHtml && currentPhoto && (
-              <button
-                type="button"
-                onClick={toggleMapView}
-                className="absolute bottom-4 right-4 w-24 h-24 rounded-xl overflow-hidden border-3 border-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                aria-label={showMap ? "切换到轮播图" : "切换到导航地图"}
-              >
-                {!showMap ? (
-                  // 显示轮播图时，缩略图显示地图图标
                   <div className="w-full h-full bg-orange-500 flex items-center justify-center">
                     <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                     </svg>
                   </div>
-                ) : (
-                  // 显示地图时，缩略图显示之前查看的照片
-                  <img
-                    src={photos[lastPhotoIndex] ?? photos[0]}
-                    alt="返回轮播图"
-                    className="w-full h-full object-cover"
-                  />
-                )}
-              </button>
-            )}
-          </div>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex h-96 w-full items-center justify-center rounded-lg bg-slate-100 text-slate-500 mb-6">
+              暂无图片
+            </div>
+          )
         ) : (
-          <div className="flex h-96 w-full items-center justify-center rounded-lg bg-slate-100 text-slate-500 mb-6">
-            暂无图片
-          </div>
+          // 地图模式 - 使用专门的 iframe 容器
+          userLocation && card.address ? (
+            <div className="relative h-96 w-full overflow-hidden rounded-lg mb-6 bg-white">
+              {/* 使用 iframe 渲染完整的 HTML 地图 */}
+              <iframe
+                srcDoc={`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Route Map</title>
+  <style>
+    body { margin:0; padding:0; }
+    #map { width: 100%; height: 100vh; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  const ORIGIN = { lat: ${userLocation.latitude}, lng: ${userLocation.longitude} };
+  const DEST_ADDR = "${card.address.replace(/"/g, '\\"')}";
+  
+  let map, dirSvc, dirRenderer;
+  function initMap() {
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: ORIGIN, zoom: 13
+    });
+    dirSvc = new google.maps.DirectionsService();
+    dirRenderer = new google.maps.DirectionsRenderer({ map: map });
+    
+    dirSvc.route({
+      origin: ORIGIN,
+      destination: DEST_ADDR,
+      travelMode: google.maps.TravelMode.DRIVING
+    }, (res, status) => {
+      if (status === 'OK') {
+        dirRenderer.setDirections(res);
+      } else {
+        alert('无法加载路线: ' + status);
+      }
+    });
+  }
+  window.initMap = initMap;
+</script>
+<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB5yMwQo7k6ilAjWviqhVph_UrGKQMXL6Q&callback=initMap"></script>
+</body>
+</html>`}
+                className="h-full w-full border-0"
+                title="导航地图"
+              />
+              {/* 右下角照片切换按钮 */}
+              <button
+                type="button"
+                onClick={toggleMapView}
+                className="absolute bottom-4 right-4 w-24 h-24 rounded-xl overflow-hidden border-3 border-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500 z-10"
+                aria-label="切换到轮播图"
+              >
+                <img
+                  src={photos[lastPhotoIndex] ?? photos[0]}
+                  alt="返回轮播图"
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            </div>
+          ) : null
         )}
 
         {/* 详细信息区域 */}
