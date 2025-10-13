@@ -31,6 +31,10 @@ export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRe
       <ScrollArea.Viewport className="h-full w-full">
         <div className="flex flex-col gap-4 p-6">
           {messages.map((message) => {
+            if (message.role === "assistant" && message.payload && message.id !== latestAssistantPayloadMessageId) {
+              return null;
+            }
+
             const showContent = message.role !== "assistant" || !message.payload;
 
             return (
