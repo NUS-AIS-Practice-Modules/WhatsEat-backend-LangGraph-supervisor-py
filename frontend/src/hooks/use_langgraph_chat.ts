@@ -3,6 +3,7 @@ import type { Client, ThreadState } from "@langchain/langgraph-sdk";
 import { getLanggraphClient, resolveGraphId } from "../lib/langgraph_client";
 import type { SupervisorPayload } from "../types/whatseat";
 import { normalizeSupervisorPayload } from "../lib/payload";
+import type { LocationCoordinates } from "./use_location";
 
 export type ChatStatus = "initializing" | "ready" | "streaming" | "unavailable";
 
@@ -15,7 +16,7 @@ export interface ChatMessage {
 
 export interface ChatController {
   messages: ChatMessage[];
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, location?: LocationCoordinates | null) => Promise<void>;
   reset: () => Promise<void>;
   status: ChatStatus;
   isStreaming: boolean;
@@ -242,7 +243,7 @@ export function useLanggraphChat(): ChatController {
   }, [initialize]);
 
   const sendMessage = useCallback<ChatController["sendMessage"]>(
-    async (content) => {
+    async (content, location) => {
       if (!threadIdRef.current) {
         throw new Error("Thread not initialized yet");
       }
@@ -251,6 +252,12 @@ export function useLanggraphChat(): ChatController {
       }
       const threadId = threadIdRef.current;
       const assistantId = assistantIdRef.current;
+
+      // 如果提供了位置信息，将其附加到消息内容中
+      let enrichedContent = content;
+      if (location) {
+        enrichedContent = `${content}\n\n[用户位置信息: 纬度 ${location.latitude}, 经度 ${location.longitude}]`;
+      }
 
       const optimisticMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -264,15 +271,27 @@ export function useLanggraphChat(): ChatController {
       setError(null);
 
       try {
+        // 构建发送给 supervisor 的消息，包含位置信息
+        const messagePayload: Record<string, unknown> = {
+          messages: [
+            {
+              role: "user",
+              content: enrichedContent,
+            },
+          ],
+        };
+
+        // 如果有位置信息，将其作为独立字段传递
+        if (location) {
+          messagePayload.user_location = {
+            latitude: location.latitude,
+            longitude: location.longitude,
+            accuracy: location.accuracy,
+          };
+        }
+
         await client.runs.wait(threadId, assistantId, {
-          input: {
-            messages: [
-              {
-                role: "user",
-                content,
-              },
-            ],
-          },
+          input: messagePayload,
         });
         await refreshMessages(threadId);
         setStatus("ready");
