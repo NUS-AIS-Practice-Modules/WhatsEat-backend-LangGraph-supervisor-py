@@ -6,9 +6,11 @@ import { RecommendationGrid } from "./recommendation_grid";
 interface ChatTranscriptProps {
   messages: ChatMessage[];
   isStreaming: boolean;
+  onRequestMore?: () => void | Promise<void>;
+  disableRequestMore?: boolean;
 }
 
-export function ChatTranscript({ messages, isStreaming }: ChatTranscriptProps) {
+export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRequestMore }: ChatTranscriptProps) {
   if (!messages.length) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 p-6 text-center text-slate-500">
@@ -20,11 +22,19 @@ export function ChatTranscript({ messages, isStreaming }: ChatTranscriptProps) {
     );
   }
 
+  const latestAssistantPayloadMessageId = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.payload)?.id;
+
   return (
-     <ScrollArea.Root className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white">
+    <ScrollArea.Root className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white">
       <ScrollArea.Viewport className="h-full w-full">
         <div className="flex flex-col gap-4 p-6">
           {messages.map((message) => {
+            if (message.role === "assistant" && message.payload && message.id !== latestAssistantPayloadMessageId) {
+              return null;
+            }
+
             const showContent = message.role !== "assistant" || !message.payload;
 
             return (
@@ -43,7 +53,13 @@ export function ChatTranscript({ messages, isStreaming }: ChatTranscriptProps) {
                     {message.content}
                   </p>
                 ) : null}
-                {message.payload ? <RecommendationGrid payload={message.payload} /> : null}
+                {message.payload && message.id === latestAssistantPayloadMessageId ? (
+                  <RecommendationGrid
+                    payload={message.payload}
+                    onRequestMore={onRequestMore}
+                    disableRequestMore={disableRequestMore}
+                  />
+                ) : null}
               </article>
             );
           })}
