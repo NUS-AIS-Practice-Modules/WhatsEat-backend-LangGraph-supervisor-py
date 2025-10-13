@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import * as ScrollArea from "@radix-ui/react-scroll-area";
 import clsx from "clsx";
 import type { ChatMessage } from "../hooks/use_langgraph_chat";
@@ -11,6 +12,34 @@ interface ChatTranscriptProps {
 }
 
 export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRequestMore }: ChatTranscriptProps) {
+  // LangGraph streams the assistant's thinking process as multiple messages. For
+  // recommendation runs we only want to render the restaurant grid once, even
+  // if the supervisor emits repeated payloads while summarising the answer.
+  const payloadVisibility = useMemo(() => {
+    const visibility = new Map<string, boolean>();
+    let previousSignature: string | null = null;
+
+    for (const message of messages) {
+      if (message.role !== "assistant") {
+        previousSignature = null;
+        continue;
+      }
+
+      const payload = message.payload;
+      if (!payload || !payload.cards?.length) {
+        previousSignature = null;
+        continue;
+      }
+
+      const signature = JSON.stringify(payload);
+      const shouldRender = signature !== previousSignature;
+      visibility.set(message.id, shouldRender);
+      previousSignature = signature;
+    }
+
+    return visibility;
+  }, [messages]);
+
   if (!messages.length) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 p-6 text-center text-slate-500">
@@ -45,7 +74,7 @@ export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRe
                     {message.content}
                   </p>
                 ) : null}
-                {message.payload ? (
+                {message.payload && message.payload.cards?.length && payloadVisibility.get(message.id) ? (
                   <RecommendationGrid
                     payload={message.payload}
                     onRequestMore={onRequestMore}
