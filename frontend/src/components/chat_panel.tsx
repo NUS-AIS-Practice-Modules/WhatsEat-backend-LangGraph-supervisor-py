@@ -49,7 +49,7 @@ export function ChatPanel({
         </p>
       </div>
       <div className="flex-1 overflow-hidden px-2">
-        <ChatTranscript messages={messages} isStreaming={isStreaming} />
+        <ChatTranscript messages={messages} isStreaming={isStreaming} userLocation={userLocation} />
       </div>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
         {userLocation && (

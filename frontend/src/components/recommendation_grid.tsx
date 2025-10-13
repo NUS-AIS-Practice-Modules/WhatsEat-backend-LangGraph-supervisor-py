@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RestaurantCard, SupervisorPayload } from "types/whatseat";
+import type { LocationCoordinates } from "../hooks/use_location";
 
 interface RecommendationGridProps {
   payload: SupervisorPayload;
+  userLocation: LocationCoordinates | null;
 }
 
 // 详情页组件
-function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () => void }) {
+function RestaurantDetails({ card, onBack, userLocation }: { card: RestaurantCard; onBack: () => void; userLocation: LocationCoordinates | null }) {
   const priceLabel = formatPriceLevel(card.price_level);
   const typeLabel = resolvePrimaryType(card);
   const ratingText = renderRating(card);
@@ -22,9 +24,12 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
     [card.photos],
   );
   const [activeIndex, setActiveIndex] = useState(0);
+  const [showMap, setShowMap] = useState(false);
+  const [lastPhotoIndex, setLastPhotoIndex] = useState(0);
 
   useEffect(() => {
     setActiveIndex(0);
+    setShowMap(false);
   }, [card.place_id, photos.join("|")]);
 
   const showPrevious = () => {
@@ -39,8 +44,73 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
     setActiveIndex(index);
   };
 
+  const toggleMapView = () => {
+    if (!showMap) {
+      setLastPhotoIndex(activeIndex);
+    }
+    setShowMap(!showMap);
+  };
+
   const currentPhoto = photos.length > 0 ? photos[activeIndex] ?? photos[0] : null;
   const hasMultiple = photos.length > 1;
+
+  // 使用 Interactive_Map.ipynb 的逻辑生成导航地图 HTML
+  const mapHtml = useMemo(() => {
+    if (!userLocation || !card.address) return null;
+
+    const BROWSER_KEY = "AIzaSyB5yMwQo7k6ilAjWviqhVph_UrGKQMXL6Q";
+    const originLat = userLocation.latitude;
+    const originLng = userLocation.longitude;
+    
+    // 使用餐厅地址作为目的地
+    const destAddr = card.address;
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Route Map</title>
+  <style>
+    body { margin:0; padding:0; }
+    #map { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  const ORIGIN = { lat: ${originLat}, lng: ${originLng} };
+  const DEST_ADDR = "${destAddr.replace(/"/g, '\\"')}";
+
+  let map, dirSvc, dirRenderer;
+  function initMap() {
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: ORIGIN, zoom: 13
+    });
+    dirSvc = new google.maps.DirectionsService();
+    dirRenderer = new google.maps.DirectionsRenderer({ map: map });
+
+    dirSvc.route({
+      origin: ORIGIN,
+      destination: DEST_ADDR,
+      travelMode: google.maps.TravelMode.DRIVING
+    }, (res, status) => {
+      if (status === 'OK') {
+        dirRenderer.setDirections(res);
+      } else {
+        console.error('Directions request failed: ' + status);
+      }
+    });
+  }
+  window.initMap = initMap;
+</script>
+<script async defer src="https://maps.googleapis.com/maps/api/js?key=${BROWSER_KEY}&callback=initMap"></script>
+</body>
+</html>
+`;
+    
+    return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+  }, [userLocation, card.address]);
 
   return (
     <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
@@ -56,16 +126,34 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
       </div>
 
       <div className="p-6">
-        {/* 图片轮播区域 */}
-        {currentPhoto ? (
+        {/* 图片轮播/地图区域 */}
+        {currentPhoto || mapHtml ? (
           <div className="relative h-96 w-full overflow-hidden rounded-lg mb-6">
-            <img
-              src={currentPhoto}
-              alt={`${card.name} 图片 ${activeIndex + 1}`}
-              loading="lazy"
-              className="h-full w-full object-cover"
-            />
-            {hasMultiple && (
+            {/* 主视图 */}
+            {!showMap ? (
+              // 轮播图视图
+              currentPhoto ? (
+                <img
+                  src={currentPhoto}
+                  alt={`${card.name} 图片 ${activeIndex + 1}`}
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
+              ) : null
+            ) : (
+              // 地图视图
+              mapHtml ? (
+                <iframe
+                  src={mapHtml}
+                  className="h-full w-full border-0"
+                  title="导航地图"
+                  sandbox="allow-scripts allow-same-origin"
+                />
+              ) : null
+            )}
+
+            {/* 轮播图控制按钮 */}
+            {!showMap && hasMultiple && (
               <>
                 <button
                   type="button"
@@ -98,6 +186,32 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
                   ))}
                 </div>
               </>
+            )}
+
+            {/* 右下角缩略图切换框 */}
+            {mapHtml && currentPhoto && (
+              <button
+                type="button"
+                onClick={toggleMapView}
+                className="absolute bottom-4 right-4 w-24 h-24 rounded-xl overflow-hidden border-3 border-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                aria-label={showMap ? "切换到轮播图" : "切换到导航地图"}
+              >
+                {!showMap ? (
+                  // 显示轮播图时，缩略图显示地图图标
+                  <div className="w-full h-full bg-orange-500 flex items-center justify-center">
+                    <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                  </div>
+                ) : (
+                  // 显示地图时，缩略图显示之前查看的照片
+                  <img
+                    src={photos[lastPhotoIndex] ?? photos[0]}
+                    alt="返回轮播图"
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </button>
             )}
           </div>
         ) : (
@@ -493,7 +607,7 @@ function CardBody({ card }: { card: RestaurantCard }) {
   );
 }
 
-export function RecommendationGrid({ payload }: RecommendationGridProps) {
+export function RecommendationGrid({ payload, userLocation }: RecommendationGridProps) {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
   if (!payload.cards?.length) {
@@ -507,7 +621,7 @@ export function RecommendationGrid({ payload }: RecommendationGridProps) {
 
   // 如果选中了餐厅，显示详情页
   if (selectedCard) {
-    return <RestaurantDetails card={selectedCard} onBack={() => setSelectedPlaceId(null)} />;
+    return <RestaurantDetails card={selectedCard} onBack={() => setSelectedPlaceId(null)} userLocation={userLocation} />;
   }
 
   // 否则显示卡片列表
