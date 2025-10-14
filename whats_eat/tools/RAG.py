@@ -78,7 +78,7 @@ class RAGTools:
                 region = env_l
 
         try:
-            # Try new SDK first
+            # Try new SDK first (pinecone v5+)
             from pinecone import Pinecone as _Pinecone  # type: ignore
             from pinecone import ServerlessSpec as _ServerlessSpec  # type: ignore
 
@@ -98,7 +98,7 @@ class RAGTools:
             self._pinecone_new_sdk = True
             logger.info("Initialized Pinecone (new SDK)")
         except Exception as new_err:
-            # Fallback to legacy SDK if available
+            # Fallback to legacy SDK if available (pinecone v2-3)
             try:
                 import importlib
 
@@ -115,12 +115,10 @@ class RAGTools:
                 self._pinecone_new_sdk = False
                 logger.info("Initialized Pinecone (legacy SDK)")
             except Exception as legacy_err:
-                msg = str(new_err) if new_err else ""
-                if "pinecone-client" in msg or "renamed from `pinecone-client`" in msg:
-                    raise RuntimeError(
-                        "Pinecone SDK conflict: uninstall 'pinecone-client' and install 'pinecone' (new SDK)."
-                    ) from new_err
-                raise legacy_err
+                logger.error(f"Failed to initialize Pinecone: {new_err}")
+                raise RuntimeError(
+                    f"Failed to initialize Pinecone. New SDK error: {new_err}. Legacy SDK error: {legacy_err}"
+                ) from new_err
 
     def load_json_data(self, file_path: str) -> Any:
         """Read a JSON file and return parsed data (dict or list)."""
@@ -285,22 +283,30 @@ def _get_rag_tools() -> RAGTools:
 
 
 @tool("process_places_data")
-def process_places_data(json_file_path: str, dry_run: bool = False) -> str:
+def process_places_data(places_data: str, dry_run: bool = False) -> str:
     """
-    End-to-end processing: load JSON, normalize, optionally connect, and upsert to Neo4j and Pinecone.
+    Process restaurant/place data and store in Neo4j knowledge graph and Pinecone vector database.
+    Accepts place data as JSON string from previous agent results (e.g., from places_agent).
     
     Args:
-        json_file_path: Path to the JSON file containing places data
+        places_data: JSON string containing places data (either a list of places or a dict with 'results'/'items' key)
+                    Expected format: list of dicts with keys like 'place_id', 'name', 'formatted_address', etc.
         dry_run: If True, only parse and normalize without connecting to external services
     
     Returns:
-        A JSON string containing the processed places data
+        A JSON string containing the processed places data and summary
     """
     rag_tools = _get_rag_tools()
     
-    data = rag_tools.load_json_data(json_file_path)
+    # Parse the JSON string input
+    try:
+        data = json.loads(places_data)
+    except json.JSONDecodeError as e:
+        return json.dumps({"error": f"Invalid JSON input: {str(e)}"}, ensure_ascii=False)
+    
+    # Extract items from various possible formats
     if isinstance(data, dict):
-        items = data.get("results", [])
+        items = data.get("results", data.get("items", data.get("candidates", [])))
     elif isinstance(data, list):
         items = data
     else:
@@ -318,11 +324,15 @@ def process_places_data(json_file_path: str, dry_run: bool = False) -> str:
         for place in normalized:
             rag_tools.create_knowledge_graph(place)
             rag_tools.create_embeddings(place)
-        logger.info("Finished processing places JSON: KG + embeddings upserted")
+        logger.info(f"Finished processing {len(normalized)} places: KG + embeddings upserted")
     else:
         logger.info(f"Dry run: would process {len(normalized)} places (no external connections)")
 
-    return json.dumps(normalized, ensure_ascii=False, indent=2)
+    return json.dumps({
+        "processed_count": len(normalized),
+        "places": normalized[:5],  # Return first 5 as sample
+        "message": f"Successfully processed and stored {len(normalized)} places in knowledge graph and vector database"
+    }, ensure_ascii=False, indent=2)
 
 
 @tool("query_similar_places")
