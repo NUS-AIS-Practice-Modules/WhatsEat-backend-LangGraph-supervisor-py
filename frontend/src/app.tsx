@@ -51,7 +51,7 @@ function App(): JSX.Element {
           </div>
 
           {/* 聊天面板 */}
-          <ChatPanel {...chat} userLocation={location.coordinates} />
+          <ChatPanel {...chat} userLocation={location.coordinates} location={location} />
         </div>
       </main>
     </div>
