@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import type { RestaurantCard, SupervisorPayload } from "types/whatseat";
+import type { LocationCoordinates } from "../hooks/use_location";
 
 interface RecommendationGridProps {
   payload: SupervisorPayload;
+  userLocation: LocationCoordinates | null;
   onRequestMore?: () => void | Promise<void>;
   disableRequestMore?: boolean;
 }
 
 // 详情页组件
-function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () => void }) {
+function RestaurantDetails({
+  card,
+  onBack,
+  userLocation,
+}: {
+  card: RestaurantCard;
+  onBack: () => void;
+  userLocation: LocationCoordinates | null;
+}) {
   const priceLabel = formatPriceLevel(card.price_level);
   const typeLabel = resolvePrimaryType(card);
   const ratingText = renderRating(card);
@@ -26,9 +36,13 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
   );
   const [activeIndex, setActiveIndex] = useState(0);
   const [animateIn, setAnimateIn] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [lastPhotoIndex, setLastPhotoIndex] = useState(0);
 
   useEffect(() => {
     setActiveIndex(0);
+    setShowMap(false);
+    setLastPhotoIndex(0);
   }, [card.place_id, photos.join("|")]);
 
   useEffect(() => {
@@ -49,8 +63,23 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
     setActiveIndex(index);
   };
 
+  const handleToggleMap = () => {
+    if (!userLocation || !card.address) {
+      return;
+    }
+    if (!showMap) {
+      setLastPhotoIndex(activeIndex);
+      setShowMap(true);
+    } else {
+      setShowMap(false);
+      setActiveIndex(lastPhotoIndex);
+    }
+  };
+
   const currentPhoto = photos.length > 0 ? photos[activeIndex] ?? photos[0] : null;
   const hasMultiple = photos.length > 1;
+  const hasMap = Boolean(userLocation && card.address);
+  const sanitizedAddress = card.address?.replace(/"/g, '\\"');
 
   return (
     <div className="flex w-full justify-center px-2 sm:px-4 perspective-1200">
@@ -73,8 +102,68 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 pb-5 pt-4">
-            {/* 图片轮播区域 */}
-            {currentPhoto ? (
+            {/* 图片轮播/地图区域 */}
+            {showMap && hasMap ? (
+              <div className="relative mb-5 h-60 w-full overflow-hidden rounded-lg bg-white lg:h-64">
+                <iframe
+                  srcDoc={`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Route Map</title>
+  <style>
+    body { margin:0; padding:0; }
+    #map { width: 100%; height: 100vh; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  const ORIGIN = { lat: ${userLocation?.latitude}, lng: ${userLocation?.longitude} };
+  const DEST_ADDR = "${sanitizedAddress ?? ""}";
+
+  let map, dirSvc, dirRenderer;
+  function initMap() {
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: ORIGIN, zoom: 13
+    });
+    dirSvc = new google.maps.DirectionsService();
+    dirRenderer = new google.maps.DirectionsRenderer({ map: map });
+
+    dirSvc.route({
+      origin: ORIGIN,
+      destination: DEST_ADDR,
+      travelMode: google.maps.TravelMode.DRIVING
+    }, (res, status) => {
+      if (status === 'OK') {
+        dirRenderer.setDirections(res);
+      } else {
+        console.warn('Unable to load route: ' + status);
+      }
+    });
+  }
+  window.initMap = initMap;
+</script>
+<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB5yMwQo7k6ilAjWviqhVph_UrGKQMXL6Q&callback=initMap"></script>
+</body>
+</html>`}
+                  className="h-full w-full border-0"
+                  title="Navigation Map"
+                />
+                <button
+                  type="button"
+                  onClick={handleToggleMap}
+                  className="absolute bottom-4 left-4 flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border-2 border-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  aria-label="Back to gallery"
+                >
+                  {photos[lastPhotoIndex] ? (
+                    <img src={photos[lastPhotoIndex]} alt="Back to gallery" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-sm font-semibold text-orange-600">Back</span>
+                  )}
+                </button>
+              </div>
+            ) : currentPhoto ? (
               <div className="relative mb-5 h-60 w-full overflow-hidden rounded-lg lg:h-64">
                 <img
                   src={currentPhoto}
@@ -116,6 +205,18 @@ function RestaurantDetails({ card, onBack }: { card: RestaurantCard; onBack: () 
                     </div>
                   </>
                 )}
+                {hasMap ? (
+                  <button
+                    type="button"
+                    onClick={handleToggleMap}
+                    className="absolute bottom-4 left-4 flex h-20 w-20 items-center justify-center rounded-xl bg-orange-500 text-white shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    aria-label="View navigation map"
+                  >
+                    <svg className="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                  </button>
+                ) : null}
               </div>
             ) : (
               <div className="mb-5 flex h-60 w-full items-center justify-center rounded-lg bg-slate-100 text-slate-500 lg:h-64">
@@ -515,7 +616,7 @@ function CardBody({ card }: { card: RestaurantCard }) {
   );
 }
 
-export function RecommendationGrid({ payload, onRequestMore, disableRequestMore }: RecommendationGridProps) {
+export function RecommendationGrid({ payload, userLocation, onRequestMore, disableRequestMore }: RecommendationGridProps) {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -595,7 +696,7 @@ export function RecommendationGrid({ payload, onRequestMore, disableRequestMore 
 
   // 如果选中了餐厅，显示详情页
   if (selectedCard) {
-    return <RestaurantDetails card={selectedCard} onBack={() => setSelectedPlaceId(null)} />;
+    return <RestaurantDetails card={selectedCard} onBack={() => setSelectedPlaceId(null)} userLocation={userLocation} />;
   }
 
   // 否则显示卡片列表

@@ -1,16 +1,18 @@
 import * as ScrollArea from "@radix-ui/react-scroll-area";
 import clsx from "clsx";
 import type { ChatMessage } from "../hooks/use_langgraph_chat";
+import type { LocationCoordinates } from "../hooks/use_location";
 import { RecommendationGrid } from "./recommendation_grid";
 
 interface ChatTranscriptProps {
   messages: ChatMessage[];
   isStreaming: boolean;
+  userLocation: LocationCoordinates | null;
   onRequestMore?: () => void | Promise<void>;
   disableRequestMore?: boolean;
 }
 
-export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRequestMore }: ChatTranscriptProps) {
+export function ChatTranscript({ messages, isStreaming, userLocation, onRequestMore, disableRequestMore }: ChatTranscriptProps) {
   if (!messages.length) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 p-6 text-center text-slate-500">
@@ -56,6 +58,7 @@ export function ChatTranscript({ messages, isStreaming, onRequestMore, disableRe
                 {message.payload && message.id === latestAssistantPayloadMessageId ? (
                   <RecommendationGrid
                     payload={message.payload}
+                    userLocation={userLocation}
                     onRequestMore={onRequestMore}
                     disableRequestMore={disableRequestMore}
                   />
