@@ -58,6 +58,10 @@ function extractNodeName(update: RunStreamUpdate | null | undefined): string | n
   if (typeof nodeCandidate === "string" && nodeCandidate.length > 0) {
     return nodeCandidate;
   }
+  const langgraphNode = (data as { langgraph_node?: unknown }).langgraph_node;
+  if (typeof langgraphNode === "string" && langgraphNode.length > 0) {
+    return langgraphNode;
+  }
   const metadata = (data as { metadata?: unknown }).metadata;
   if (metadata && typeof metadata === "object") {
     const nested = (metadata as { node?: unknown }).node;
@@ -72,6 +76,16 @@ function extractThreadValues(update: RunStreamUpdate | null | undefined): Thread
   const data = update?.data;
   if (!data || typeof data !== "object") {
     return null;
+  }
+
+  const updateValues = (data as { update?: unknown }).update;
+  if (updateValues) {
+    if (Array.isArray(updateValues)) {
+      return updateValues as ThreadValues;
+    }
+    if (typeof updateValues === "object" && "values" in (updateValues as Record<string, unknown>)) {
+      return (updateValues as { values?: ThreadValues }).values ?? null;
+    }
   }
 
   const directValue = (data as { value?: unknown }).value;
@@ -450,12 +464,10 @@ export function useLanggraphChat(): ChatController {
           };
         }
 
-        const stream = await client.runs.stream(
-          threadId,
-          assistantId,
-          { input: messagePayload },
-          { stream_mode: "updates" }
-        );
+        const stream = await client.runs.stream(threadId, assistantId, {
+          input: messagePayload,
+          stream_mode: "updates",
+        });
 
         let sawSummarizer = false;
 
@@ -463,7 +475,7 @@ export function useLanggraphChat(): ChatController {
           const nodeName = extractNodeName(update);
           const finalUpdate = isFinalUpdate(update);
 
-          if (!finalUpdate && nodeName && nodeName !== SUMMARIZER_NODE) {
+          if (!finalUpdate && nodeName !== SUMMARIZER_NODE) {
             continue;
           }
 
@@ -494,7 +506,9 @@ export function useLanggraphChat(): ChatController {
           }
 
           const latest = normalized[normalized.length - 1];
-          sawSummarizer = sawSummarizer || nodeName === SUMMARIZER_NODE || Boolean(latest.payload);
+          if (nodeName === SUMMARIZER_NODE) {
+            sawSummarizer = true;
+          }
 
           setMessages((prev) => {
             const assistantId = streamingAssistantIdRef.current;
