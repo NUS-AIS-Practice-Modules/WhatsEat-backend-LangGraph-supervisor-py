@@ -34,12 +34,71 @@ type LangGraphMessage = {
 
 type ThreadValues = ThreadState["values"];
 
+type RunStreamUpdate = {
+  event?: string;
+  data?: Record<string, unknown>;
+};
+
 type AssistantRecord = {
   assistant_id?: string;
   assistantId?: string;
   graph_id?: string;
   graphId?: string;
 };
+
+const HIDDEN_AGENT_NODES = new Set([
+  "places_agent",
+  "user_profile_agent",
+  "rag_recommender_agent",
+]);
+
+function extractNodeName(update: RunStreamUpdate | null | undefined): string | null {
+  const data = update?.data;
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+  const nodeCandidate = (data as { node?: unknown }).node;
+  if (typeof nodeCandidate === "string" && nodeCandidate.length > 0) {
+    return nodeCandidate;
+  }
+  const metadata = (data as { metadata?: unknown }).metadata;
+  if (metadata && typeof metadata === "object") {
+    const nested = (metadata as { node?: unknown }).node;
+    if (typeof nested === "string" && nested.length > 0) {
+      return nested;
+    }
+  }
+  return null;
+}
+
+function extractThreadValues(update: RunStreamUpdate | null | undefined): ThreadValues | null {
+  const data = update?.data;
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const directValue = (data as { value?: unknown }).value;
+  if (directValue) {
+    return directValue as ThreadValues;
+  }
+
+  const pluralValues = (data as { values?: unknown }).values;
+  if (pluralValues) {
+    return pluralValues as ThreadValues;
+  }
+
+  const state = (data as { state?: unknown }).state;
+  if (state && typeof state === "object" && "values" in (state as Record<string, unknown>)) {
+    return (state as { values?: ThreadValues }).values ?? null;
+  }
+
+  const result = (data as { result?: unknown }).result;
+  if (result && typeof result === "object" && "values" in (result as Record<string, unknown>)) {
+    return (result as { values?: ThreadValues }).values ?? null;
+  }
+
+  return null;
+}
 
 function resolveAssistantId(candidate: AssistantRecord | null | undefined): string | null {
   if (!candidate) {
@@ -163,20 +222,104 @@ function resolveRole(message: LangGraphMessage): ChatMessage["role"] | null {
   return null;
 }
 
+function resolveMessageNodeName(message: LangGraphMessage): string | null {
+  const additional = message.additional_kwargs;
+  if (additional && typeof additional === "object") {
+    const direct = (additional as { node?: unknown }).node;
+    if (typeof direct === "string" && direct.length > 0) {
+      return direct;
+    }
+
+    const langgraphNode = (additional as { langgraph_node?: unknown }).langgraph_node;
+    if (typeof langgraphNode === "string" && langgraphNode.length > 0) {
+      return langgraphNode;
+    }
+
+    const sender = (additional as { sender?: unknown }).sender;
+    if (typeof sender === "string" && sender.length > 0) {
+      return sender;
+    }
+
+    const metadata = (additional as { metadata?: unknown }).metadata;
+    if (metadata && typeof metadata === "object") {
+      const metaNode = (metadata as { node?: unknown }).node;
+      if (typeof metaNode === "string" && metaNode.length > 0) {
+        return metaNode;
+      }
+
+      const metaLanggraphNode = (metadata as { langgraph_node?: unknown }).langgraph_node;
+      if (typeof metaLanggraphNode === "string" && metaLanggraphNode.length > 0) {
+        return metaLanggraphNode;
+      }
+
+      const agentName = (metadata as { agent?: unknown }).agent;
+      if (typeof agentName === "string" && agentName.length > 0) {
+        return agentName;
+      }
+    }
+  }
+
+  const responseMetadata = message.response_metadata;
+  if (responseMetadata && typeof responseMetadata === "object") {
+    const direct = (responseMetadata as { node?: unknown }).node;
+    if (typeof direct === "string" && direct.length > 0) {
+      return direct;
+    }
+
+    const langgraphNode = (responseMetadata as { langgraph_node?: unknown }).langgraph_node;
+    if (typeof langgraphNode === "string" && langgraphNode.length > 0) {
+      return langgraphNode;
+    }
+
+    const metadata = (responseMetadata as { metadata?: unknown }).metadata;
+    if (metadata && typeof metadata === "object") {
+      const metaNode = (metadata as { node?: unknown }).node;
+      if (typeof metaNode === "string" && metaNode.length > 0) {
+        return metaNode;
+      }
+
+      const metaLanggraphNode = (metadata as { langgraph_node?: unknown }).langgraph_node;
+      if (typeof metaLanggraphNode === "string" && metaLanggraphNode.length > 0) {
+        return metaLanggraphNode;
+      }
+
+      const agentName = (metadata as { agent?: unknown }).agent;
+      if (typeof agentName === "string" && agentName.length > 0) {
+        return agentName;
+      }
+    }
+  }
+
+  return null;
+}
+
 function normalizeMessages(items: LangGraphMessage[]): ChatMessage[] {
-const normalized: ChatMessage[] = [];
+  const normalized: ChatMessage[] = [];
   for (const message of items) {
     const role = resolveRole(message);
     if (!role) {
       continue;
     }
+    const payload = extractPayload(message);
+    const nodeName = resolveMessageNodeName(message);
+    if (role === "assistant") {
+      if (nodeName && HIDDEN_AGENT_NODES.has(nodeName)) {
+        continue;
+      }
+      if (nodeName && nodeName !== "summarizer_agent") {
+        continue;
+      }
+      if (!nodeName && !payload) {
+        continue;
+      }
+    }
     normalized.push({
       id: message.id ?? crypto.randomUUID(),
       role,
       content: extractText(message),
-      payload: extractPayload(message),
+      payload,
     });
-}
+  }
   return normalized;
 }
 
@@ -189,6 +332,7 @@ export function useLanggraphChat(): ChatController {
   const [isStreaming, setIsStreaming] = useState(false);
   const threadIdRef = useRef<string | null>(null);
   const assistantIdRef = useRef<string | null>(null);
+  const streamingAssistantIdRef = useRef<string | null>(null);
 
   const ensureAssistant = useCallback(async (): Promise<string> => {
     if (assistantIdRef.current) {
@@ -290,10 +434,54 @@ export function useLanggraphChat(): ChatController {
           };
         }
 
-        await client.runs.wait(threadId, assistantId, {
+        const stream = await client.runs.stream(threadId, assistantId, {
           input: messagePayload,
+          streamMode: "updates",
         });
-        await refreshMessages(threadId);
+
+        let sawSummarizer = false;
+
+        for await (const update of stream as AsyncIterable<RunStreamUpdate>) {
+          const nodeName = extractNodeName(update);
+          if (nodeName && nodeName !== "summarizer_agent") {
+            continue;
+          }
+
+          const values = extractThreadValues(update);
+          if (!values) {
+            continue;
+          }
+
+          const items = extractMessages(values);
+          if (!items.length) {
+            continue;
+          }
+
+          const normalized = normalizeMessages(items).filter((message) => message.role === "assistant");
+          if (!normalized.length) {
+            continue;
+          }
+
+          const latest = normalized[normalized.length - 1];
+          sawSummarizer = sawSummarizer || nodeName === "summarizer_agent";
+
+          setMessages((prev) => {
+            const assistantId = streamingAssistantIdRef.current;
+            if (!assistantId) {
+              const newId = crypto.randomUUID();
+              streamingAssistantIdRef.current = newId;
+              return [...prev, { ...latest, id: newId }];
+            }
+            return prev.map((message) =>
+              message.id === assistantId ? { ...message, content: latest.content, payload: latest.payload } : message
+            );
+          });
+        }
+
+        if (!sawSummarizer) {
+          await refreshMessages(threadId);
+        }
+
         setStatus("ready");
       } catch (cause) {
         console.error("Failed to complete run", cause);
@@ -301,6 +489,7 @@ export function useLanggraphChat(): ChatController {
         setStatus("unavailable");
       } finally {
         setIsStreaming(false);
+        streamingAssistantIdRef.current = null;
       }
     },
     [client, ensureAssistant, refreshMessages]
