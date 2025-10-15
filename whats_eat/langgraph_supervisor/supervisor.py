@@ -1,5 +1,15 @@
 import inspect
-from typing import Any, Callable, Literal, Optional, Sequence, Type, Union, cast, get_args
+from typing import (
+    Any,
+    Callable,
+    Literal,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+    cast,
+    get_args,
+)
 from uuid import UUID, uuid5
 from warnings import warn
 
@@ -228,6 +238,8 @@ def create_supervisor(
     add_handoff_back_messages: Optional[bool] = None,
     supervisor_name: str = "supervisor",
     include_agent_name: AgentNameMode | None = None,
+    finalizer: Callable[[dict], dict] | RunnableLike | None = None,
+    finalizer_name: str = "finalize_supervisor_state",
     **deprecated_kwargs: Unpack[DeprecatedKwargs],
 ) -> StateGraph:
     """Create a multi-agent supervisor.
@@ -324,6 +336,9 @@ def create_supervisor(
             - None: Relies on the LLM provider using the name attribute on the AI message. Currently, only OpenAI supports this.
             - `"inline"`: Add the agent name directly into the content field of the AI message using XML-style tags.
                 Example: `"How can I help you"` -> `"<name>agent_name</name><content>How can I help you?</content>"`
+        finalizer: Optional callable or runnable that will be executed once the supervisor decides to
+            finish the workflow. Use this to post-process the final graph state (e.g., prune message history).
+        finalizer_name: Name to assign to the finalizer node when `finalizer` is provided.
 
     Example:
         ```python
@@ -434,8 +449,23 @@ def create_supervisor(
     )
 
     builder = StateGraph(workflow_schema, context_schema=context_schema)
-    builder.add_node(supervisor_agent, destinations=tuple(agent_names) + (END,))
+    if finalizer is not None:
+        if finalizer_name in agent_names or finalizer_name == supervisor_name:
+            raise ValueError(
+                "Finalizer name must be unique and cannot match the supervisor or a managed agent."
+            )
+
+    supervisor_destinations: tuple[str, ...]
+    if finalizer is None:
+        supervisor_destinations = tuple(agent_names) + (END,)
+    else:
+        supervisor_destinations = tuple(agent_names) + (finalizer_name,)
+
+    builder.add_node(supervisor_agent, destinations=supervisor_destinations)
     builder.add_edge(START, supervisor_agent.name)
+    if finalizer is not None:
+        builder.add_node(finalizer_name, finalizer)
+        builder.add_edge(finalizer_name, END)
     for agent in agents:
         builder.add_node(
             agent.name,

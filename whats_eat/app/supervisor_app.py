@@ -1,5 +1,7 @@
 # app/supervisor_app.py
 from langchain.chat_models import init_chat_model
+from langchain_core.messages import BaseMessage
+
 from whats_eat.langgraph_supervisor import (
     create_supervisor,
     create_forward_message_tool,
@@ -94,12 +96,29 @@ def build_app():
         model=init_chat_model("openai:gpt-4o-mini"),
         tools=[forward_tool],              # your handoff tools will be auto-added
         prompt=supervisor_prompt,
-        add_handoff_messages=True,         # include "transfer" messages
-        add_handoff_back_messages=True,    # include "transfer back" messages
-        # add_handoff_messages=False,          # omit "transfer" messages
-        # add_handoff_back_messages=False,     # omit "transfer back" messages
+        add_handoff_messages=False,         # omit "transfer" messages
+        add_handoff_back_messages=False,    # omit "transfer back" messages
         output_mode="last_message",        # or "full_history" to include full traces
         include_agent_name="inline",       # robust name exposure for models
         parallel_tool_calls=True,         # 1-at-a-time handoffs (tutorial style)
+        finalizer=_keep_user_and_summarizer_messages,
     )
     return workflow.compile()
+
+
+def _keep_user_and_summarizer_messages(state: dict) -> dict:
+    """Prune intermediate agent outputs before returning the final graph state."""
+
+    messages = state.get("messages")
+    if not messages:
+        return state
+
+    visible_messages: list[BaseMessage] = []
+    for message in messages:
+        if message.type == "human" or getattr(message, "name", None) == "summarizer_agent":
+            visible_messages.append(message)
+
+    return {
+        **state,
+        "messages": visible_messages,
+    }
