@@ -741,7 +741,7 @@ wheels = [
 
 [[package]]
 name = "langgraph-api"
-version = "0.4.38"
+version = "0.4.39"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cloudpickle" },
@@ -770,9 +770,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "watchfiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1f/9b/c4ef4ecba83cbabef745bf4c63be47e6cc5d5b2080b0a46f7296df64c9bb/langgraph_api-0.4.38.tar.gz", hash = "sha256:78d81ec3330e561c10ed2e6df4f17517f9bacbd075af929adeb7c7d0c682bfb4", size = 333349, upload-time = "2025-10-08T20:02:20.513Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/e2/42abc380173df28c66d60e976f498031d78bd53171f1993f3fde5951e8b1/langgraph_api-0.4.39.tar.gz", hash = "sha256:6e11b4d3890147e3234b65d24a638c0998520e2cf6ee44a69bdadf8f2a0cd1d7", size = 338903, upload-time = "2025-10-10T22:42:20.93Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/8e/490b4b92bf7297306ad1d37c31d7b7965147b471d09727b6d56e6fabcc7d/langgraph_api-0.4.38-py3-none-any.whl", hash = "sha256:fa20946e61f1af8130aaff7ed8915f171c3c67eb6ede386738769751763a1ab7", size = 256373, upload-time = "2025-10-08T20:02:18.926Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/23/753f743f1a172e6dde5de7c2e4f7514525b4e1cc9ff3c82b3377308259c4/langgraph_api-0.4.39-py3-none-any.whl", hash = "sha256:83894d0cadb361824facdbffb39468e86309f6c51a4c83b10d67bd0fad71b6af", size = 256479, upload-time = "2025-10-10T22:42:18.61Z" },
 ]
 
 [[package]]
@@ -863,6 +863,7 @@ dependencies = [
     { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "langgraph" },
+    { name = "langgraph-api" },
     { name = "neo4j" },
     { name = "openai" },
     { name = "pinecone-client" },
@@ -891,6 +892,7 @@ requires-dist = [
     { name = "langchain-core", specifier = ">=0.3.40" },
     { name = "langchain-openai", specifier = ">=0.3.33" },
     { name = "langgraph", specifier = ">=0.6.0,<0.7.0" },
+    { name = "langgraph-api", specifier = "==0.4.39" },
     { name = "neo4j", specifier = ">=5.0.0" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "pinecone-client", specifier = ">=3.0.0" },

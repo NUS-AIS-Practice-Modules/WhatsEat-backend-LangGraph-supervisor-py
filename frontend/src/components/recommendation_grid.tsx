@@ -314,7 +314,7 @@ function RestaurantDetails({
               {card.why && card.why.length > 0 && (
                 <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
                   <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-orange-800">
-                    💡 为什么推荐这家
+                    💡 Why recommend this
                   </p>
                   <ul className="space-y-1.5 text-sm text-slate-700">
                     {card.why.map((reason, index) => (
