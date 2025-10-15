@@ -32,6 +32,7 @@ def build_app():
         "    * Replaces the old separate rag_agent and recommender_agent workflow\n"
         "  • summarizer_agent – combines and refines results from other agents to generate the final, human-readable response.\n"
         "  • route_agent – computes routes and generates interactive map views GIVEN coordinates (lat/long); does not perform geocoding.\n"
+        "  • rag_agent – performs retrieval-augmented generation for answering questions using knowledge base or document search.\n"
         "- Routing guide:\n"
         "  • Location/place search or address→coordinates (user or restaurant) → places_agent\n"
         "  • YouTube history, channels, or interest-based profiling → user_profile_agent\n"
