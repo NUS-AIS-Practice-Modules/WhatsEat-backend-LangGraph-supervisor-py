@@ -124,7 +124,9 @@ class RAGTools:
 
     def load_json_data(self, file_path: str) -> Any:
         """Read a JSON file and return parsed data (dict or list)."""
-        with open(file_path, "r", encoding="utf-8") as f:
+        # Normalize path for Windows compatibility (handles backslashes)
+        normalized_path = os.path.normpath(file_path)
+        with open(normalized_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def _normalize_place(self, raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -290,7 +292,7 @@ def process_places_data(json_file_path: str, dry_run: bool = False) -> str:
     End-to-end processing: load JSON, normalize, optionally connect, and upsert to Neo4j and Pinecone.
     
     Args:
-        json_file_path: Path to the JSON file containing places data
+        json_file_path: Path to the JSON file containing places data OR a JSON string
         dry_run: If True, only parse and normalize without connecting to external services
     
     Returns:
@@ -298,7 +300,20 @@ def process_places_data(json_file_path: str, dry_run: bool = False) -> str:
     """
     rag_tools = _get_rag_tools()
     
-    data = rag_tools.load_json_data(json_file_path)
+    # Try to parse as JSON string first, then as file path
+    try:
+        # If it's a JSON string, parse it directly
+        data = json.loads(json_file_path)
+    except (json.JSONDecodeError, TypeError):
+        # Otherwise, treat it as a file path
+        try:
+            data = rag_tools.load_json_data(json_file_path)
+        except Exception as e:
+            return json.dumps({
+                "error": f"Failed to load data: {type(e).__name__}({str(e)})",
+                "suggestion": "Please provide either a valid JSON string or a valid file path"
+            }, ensure_ascii=False, indent=2)
+    
     if isinstance(data, dict):
         items = data.get("results", [])
     elif isinstance(data, list):
