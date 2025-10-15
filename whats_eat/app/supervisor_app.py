@@ -28,7 +28,7 @@ def build_app():
         "On each turn, decide whether to delegate the task to exactly ONE agent or to finish the process once all required information is complete.\n"
         "\n"
         "Core mechanism:\n"
-        "After receiving a user input, you must call places_agent and user_profile_agent in parallel.\n"
+        "After receiving a user input, you must call places_agent and user_profile_agent in parallel by issuing a single parallel tool call that includes both transfers.\n"
         "Once both return their JSON outputs, combine them in the format (json1, json2) and pass the result to rag_recommender_agent,\n"
         "which performs knowledge-enhanced retrieval and ranking.\n"
         "Finally, send the rag_recommender_agent result to summarizer_agent to generate the final human-readable answer.\n"
@@ -94,11 +94,12 @@ def build_app():
         model=init_chat_model("openai:gpt-4o-mini"),
         tools=[forward_tool],              # your handoff tools will be auto-added
         prompt=supervisor_prompt,
-        # add_handoff_back_messages=True,    # include "transfer back" messages
-        add_handoff_messages=False,  # keep graph memory compact for API responses
-        add_handoff_back_messages=False,  # return only the final AI message to clients
+        add_handoff_messages=True,         # include "transfer" messages
+        add_handoff_back_messages=True,    # include "transfer back" messages
+        # add_handoff_messages=False,          # omit "transfer" messages
+        # add_handoff_back_messages=False,     # omit "transfer back" messages
         output_mode="last_message",        # or "full_history" to include full traces
         include_agent_name="inline",       # robust name exposure for models
-        parallel_tool_calls=False,         # 1-at-a-time handoffs (tutorial style)
+        parallel_tool_calls=True,         # 1-at-a-time handoffs (tutorial style)
     )
     return workflow.compile()
