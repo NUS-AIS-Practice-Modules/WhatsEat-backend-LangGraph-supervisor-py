@@ -100,5 +100,6 @@ def build_app():
         output_mode="last_message",        # or "full_history" to include full traces
         include_agent_name="inline",       # robust name exposure for models
         parallel_tool_calls=True,          # enable parallel delegation for discovery phase
+        handoff_tool_prefix="delegate_to_",  # ensure deterministic handoff tool names
     )
     return workflow.compile()
