@@ -12,6 +12,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   payload?: SupervisorPayload | null;
+  node?: string | null;
 }
 
 export interface ChatController {
@@ -46,11 +47,7 @@ type AssistantRecord = {
   graphId?: string;
 };
 
-const HIDDEN_AGENT_NODES = new Set([
-  "places_agent",
-  "user_profile_agent",
-  "rag_recommender_agent",
-]);
+const SUMMARIZER_NODE = "summarizer_agent";
 
 function extractNodeName(update: RunStreamUpdate | null | undefined): string | null {
   const data = update?.data;
@@ -318,14 +315,25 @@ function normalizeMessages(items: LangGraphMessage[]): ChatMessage[] {
       continue;
     }
     const nodeName = resolveMessageNodeName(message);
-    if (role === "assistant" && nodeName && HIDDEN_AGENT_NODES.has(nodeName)) {
-      continue;
+    const content = extractText(message);
+    const payload = extractPayload(message);
+
+    if (role === "assistant") {
+      if (nodeName && nodeName !== SUMMARIZER_NODE) {
+        continue;
+      }
+      if (!nodeName && !payload) {
+        // Assistant messages without a node attribution or structured payload are
+        // intermediate agent emissions that should not surface in the UI.
+        continue;
+      }
     }
     normalized.push({
       id: message.id ?? crypto.randomUUID(),
       role,
-      content: extractText(message),
-      payload: extractPayload(message),
+      content,
+      payload,
+      node: nodeName ?? null,
     });
   }
   return normalized;
@@ -442,10 +450,12 @@ export function useLanggraphChat(): ChatController {
           };
         }
 
-        const stream = await client.runs.stream(threadId, assistantId, {
-          input: messagePayload,
-          streamMode: "updates",
-        });
+        const stream = await client.runs.stream(
+          threadId,
+          assistantId,
+          { input: messagePayload },
+          { stream_mode: "updates" }
+        );
 
         let sawSummarizer = false;
 
@@ -453,7 +463,7 @@ export function useLanggraphChat(): ChatController {
           const nodeName = extractNodeName(update);
           const finalUpdate = isFinalUpdate(update);
 
-          if (!finalUpdate && nodeName && nodeName !== "summarizer_agent") {
+          if (!finalUpdate && nodeName && nodeName !== SUMMARIZER_NODE) {
             continue;
           }
 
@@ -467,13 +477,24 @@ export function useLanggraphChat(): ChatController {
             continue;
           }
 
-          const normalized = normalizeMessages(items).filter((message) => message.role === "assistant");
+          const normalized = normalizeMessages(items).filter((message) => {
+            if (message.role !== "assistant") {
+              return false;
+            }
+            if (message.node && message.node !== SUMMARIZER_NODE) {
+              return false;
+            }
+            if (!message.node && !message.payload) {
+              return false;
+            }
+            return true;
+          });
           if (!normalized.length) {
             continue;
           }
 
           const latest = normalized[normalized.length - 1];
-          sawSummarizer = sawSummarizer || nodeName === "summarizer_agent" || Boolean(latest.payload);
+          sawSummarizer = sawSummarizer || nodeName === SUMMARIZER_NODE || Boolean(latest.payload);
 
           setMessages((prev) => {
             const assistantId = streamingAssistantIdRef.current;
