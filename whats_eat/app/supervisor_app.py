@@ -1,6 +1,6 @@
 # app/supervisor_app.py
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, ToolMessage
 
 from whats_eat.langgraph_supervisor import (
     create_supervisor,
@@ -115,6 +115,13 @@ def _keep_user_and_summarizer_messages(state: dict) -> dict:
 
     visible_messages: list[BaseMessage] = []
     for message in messages:
+        if isinstance(message, ToolMessage):
+            continue
+
+        additional_kwargs = getattr(message, "additional_kwargs", None) or {}
+        if isinstance(additional_kwargs, dict) and additional_kwargs.get("tool_invocation"):
+            continue
+
         if message.type == "human" or getattr(message, "name", None) == "summarizer_agent":
             visible_messages.append(message)
 

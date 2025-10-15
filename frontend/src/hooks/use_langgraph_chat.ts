@@ -194,6 +194,15 @@ function resolveRole(message: LangGraphMessage): ChatMessage["role"] | null {
 function normalizeMessages(items: LangGraphMessage[]): ChatMessage[] {
   const normalized: ChatMessage[] = [];
   for (const message of items) {
+    if (message.type === "tool" || message.role === "tool") {
+      continue;
+    }
+
+    const additional = message.additional_kwargs;
+    if (additional && typeof additional === "object" && "tool_invocation" in additional) {
+      continue;
+    }
+
     const role = resolveRole(message);
     if (!role) {
       continue;
