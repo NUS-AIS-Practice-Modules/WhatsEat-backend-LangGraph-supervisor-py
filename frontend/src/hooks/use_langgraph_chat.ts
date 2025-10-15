@@ -46,6 +46,12 @@ type AssistantRecord = {
   graphId?: string;
 };
 
+const HIDDEN_AGENT_NODES = new Set([
+  "places_agent",
+  "user_profile_agent",
+  "rag_recommender_agent",
+]);
+
 function extractNodeName(update: RunStreamUpdate | null | undefined): string | null {
   const data = update?.data;
   if (!data || typeof data !== "object") {
@@ -233,11 +239,86 @@ function resolveRole(message: LangGraphMessage): ChatMessage["role"] | null {
   return null;
 }
 
+function resolveMessageNodeName(message: LangGraphMessage): string | null {
+  const additional = message.additional_kwargs;
+  if (additional && typeof additional === "object") {
+    const direct = (additional as { node?: unknown }).node;
+    if (typeof direct === "string" && direct.length > 0) {
+      return direct;
+    }
+
+    const langgraphNode = (additional as { langgraph_node?: unknown }).langgraph_node;
+    if (typeof langgraphNode === "string" && langgraphNode.length > 0) {
+      return langgraphNode;
+    }
+
+    const sender = (additional as { sender?: unknown }).sender;
+    if (typeof sender === "string" && sender.length > 0) {
+      return sender;
+    }
+
+    const metadata = (additional as { metadata?: unknown }).metadata;
+    if (metadata && typeof metadata === "object") {
+      const metaNode = (metadata as { node?: unknown }).node;
+      if (typeof metaNode === "string" && metaNode.length > 0) {
+        return metaNode;
+      }
+
+      const metaLanggraphNode = (metadata as { langgraph_node?: unknown }).langgraph_node;
+      if (typeof metaLanggraphNode === "string" && metaLanggraphNode.length > 0) {
+        return metaLanggraphNode;
+      }
+
+      const agentName = (metadata as { agent?: unknown }).agent;
+      if (typeof agentName === "string" && agentName.length > 0) {
+        return agentName;
+      }
+    }
+  }
+
+  const responseMetadata = message.response_metadata;
+  if (responseMetadata && typeof responseMetadata === "object") {
+    const direct = (responseMetadata as { node?: unknown }).node;
+    if (typeof direct === "string" && direct.length > 0) {
+      return direct;
+    }
+
+    const langgraphNode = (responseMetadata as { langgraph_node?: unknown }).langgraph_node;
+    if (typeof langgraphNode === "string" && langgraphNode.length > 0) {
+      return langgraphNode;
+    }
+
+    const metadata = (responseMetadata as { metadata?: unknown }).metadata;
+    if (metadata && typeof metadata === "object") {
+      const metaNode = (metadata as { node?: unknown }).node;
+      if (typeof metaNode === "string" && metaNode.length > 0) {
+        return metaNode;
+      }
+
+      const metaLanggraphNode = (metadata as { langgraph_node?: unknown }).langgraph_node;
+      if (typeof metaLanggraphNode === "string" && metaLanggraphNode.length > 0) {
+        return metaLanggraphNode;
+      }
+
+      const agentName = (metadata as { agent?: unknown }).agent;
+      if (typeof agentName === "string" && agentName.length > 0) {
+        return agentName;
+      }
+    }
+  }
+
+  return null;
+}
+
 function normalizeMessages(items: LangGraphMessage[]): ChatMessage[] {
   const normalized: ChatMessage[] = [];
   for (const message of items) {
     const role = resolveRole(message);
     if (!role) {
+      continue;
+    }
+    const nodeName = resolveMessageNodeName(message);
+    if (role === "assistant" && nodeName && HIDDEN_AGENT_NODES.has(nodeName)) {
       continue;
     }
     normalized.push({
