@@ -702,7 +702,7 @@ export function RecommendationGrid({ payload, userLocation, onRequestMore, disab
   // 否则显示卡片列表
   return (
     <div className="space-y-4">
-      <div className="relative mx-auto max-w-6xl">
+      <div className="relative mx-auto max-w-6xl pb-2">
         <div
           className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white via-white/80 to-transparent transition-opacity duration-200 sm:w-16"
           aria-hidden="true"
@@ -712,6 +712,7 @@ export function RecommendationGrid({ payload, userLocation, onRequestMore, disab
           ref={scrollContainerRef}
           onScroll={handleScroll}
           className="carousel-scroll flex gap-4 overflow-x-auto scroll-smooth pb-6 pl-4 pr-4 snap-x snap-mandatory sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8"
+          style={{ paddingBottom: '1.5rem' }}
         >
           {payload.cards.map((card) => (
             <article
