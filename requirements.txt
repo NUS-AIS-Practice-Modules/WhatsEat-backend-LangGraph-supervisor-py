@@ -6,7 +6,7 @@ langchain-openai>=0.3.33
 
 # Database and Vector Store
 neo4j>=5.0.0
-pinecone-client>=3.0.0
+pinecone>=5.0.0
 
 # OpenAI
 openai>=1.0.0
