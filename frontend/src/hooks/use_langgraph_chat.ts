@@ -466,7 +466,7 @@ export function useLanggraphChat(): ChatController {
 
         const stream = await client.runs.stream(threadId, assistantId, {
           input: messagePayload,
-          stream_mode: "updates",
+          streamMode: "updates",
         });
 
         let sawSummarizer = false;
