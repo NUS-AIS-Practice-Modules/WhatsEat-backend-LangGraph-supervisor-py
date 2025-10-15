@@ -148,6 +148,34 @@ function extractPayload(message: LangGraphMessage): SupervisorPayload | null {
   return null;
 }
 
+function extractAgentName(message: LangGraphMessage): string | null {
+  const fromResponse = message.response_metadata;
+  if (fromResponse && typeof fromResponse === "object") {
+    const candidate = (fromResponse as { agent_name?: unknown }).agent_name;
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate;
+    }
+    const fallback = (fromResponse as { agent?: unknown }).agent;
+    if (typeof fallback === "string" && fallback.trim()) {
+      return fallback;
+    }
+  }
+
+  const fromAdditional = message.additional_kwargs;
+  if (fromAdditional && typeof fromAdditional === "object") {
+    const candidate = (fromAdditional as { agent_name?: unknown }).agent_name;
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate;
+    }
+    const fallback = (fromAdditional as { agent?: unknown }).agent;
+    if (typeof fallback === "string" && fallback.trim()) {
+      return fallback;
+    }
+  }
+
+  return null;
+}
+
 function resolveRole(message: LangGraphMessage): ChatMessage["role"] | null {
   const rawRole = message.role ?? message.type ?? "";
   const normalized = rawRole.toLowerCase();
@@ -164,19 +192,27 @@ function resolveRole(message: LangGraphMessage): ChatMessage["role"] | null {
 }
 
 function normalizeMessages(items: LangGraphMessage[]): ChatMessage[] {
-const normalized: ChatMessage[] = [];
+  const normalized: ChatMessage[] = [];
   for (const message of items) {
     const role = resolveRole(message);
     if (!role) {
       continue;
     }
+
+    if (role === "assistant") {
+      const agentName = extractAgentName(message);
+      if (agentName && agentName !== "summarizer_agent") {
+        continue;
+      }
+    }
+
     normalized.push({
       id: message.id ?? crypto.randomUUID(),
       role,
       content: extractText(message),
       payload: extractPayload(message),
     });
-}
+  }
   return normalized;
 }
 
