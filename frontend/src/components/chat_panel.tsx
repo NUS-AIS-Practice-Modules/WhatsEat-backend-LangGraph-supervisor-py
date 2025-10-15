@@ -65,7 +65,7 @@ export function ChatPanel({
   }, [location, userLocation]);
 
   return (
-    <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white shadow-lg">
+    <section className="relative flex flex-1 flex-col gap-4 rounded-lg border border-slate-200 bg-white shadow-lg">
       <div className="flex flex-col gap-3 px-6 pt-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-brand">Culinary discovery assistant</h1>
@@ -84,7 +84,10 @@ export function ChatPanel({
           disableRequestMore={status !== "ready" || isStreaming}
         />
       </div>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+      <form
+        onSubmit={handleSubmit}
+        className="sticky bottom-0 left-0 right-0 z-10 flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4"
+      >
         <button
           type="button"
           onClick={handleRecommend}
