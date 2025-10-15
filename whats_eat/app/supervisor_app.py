@@ -4,18 +4,16 @@ from whats_eat.langgraph_supervisor import create_supervisor, create_forward_mes
 
 from whats_eat.agents.places_agent import build_places_agent
 from whats_eat.agents.user_profile_agent import build_user_profile_agent
-from whats_eat.agents.recommender_agent import build_recommender_agent
 from whats_eat.agents.summarizer_agent import build_summarizer_agent
 from whats_eat.agents.route_agent import build_route_agent
-from whats_eat.agents.RAG_agent import build_rag_agent
+from whats_eat.agents.rag_recommender_agent import build_rag_recommender_agent
 
 def build_app():
     places = build_places_agent()
     user_profile = build_user_profile_agent()
-    recommender = build_recommender_agent()
     summarizer = build_summarizer_agent()
     route = build_route_agent()
-    rag = build_rag_agent()
+    rag_recommender = build_rag_recommender_agent()
 
     # Optional extra tool: forward a worker's exact wording to the user
     forward_tool = create_forward_message_tool()
@@ -25,34 +23,33 @@ def build_app():
         "- Available agents:\n"
         "  • places_agent – retrieves and analyzes information about places, restaurants, or local venues; GEOCODES any addresses (user or restaurant) to lat/long.\n"
         "  • user_profile_agent – converts YouTube behaviour into structured dining preferences and embeddings.\n"
-        "  • recommender_agent – ranks, filters, or selects items (e.g., recommends top places based on taste, location, or user preferences).\n"
+        "  • rag_recommender_agent – COMBINED agent that handles the complete recommendation pipeline:\n"
+        "    * Accepts TWO JSON inputs from supervisor: place data (from places_agent) AND user profile data\n"
+        "    * Builds knowledge graph (Neo4j) + vector embeddings (Pinecone) from place data\n"
+        "    * Performs semantic similarity search using user profile embeddings\n"
+        "    * Ranks results with multi-factor scoring (similarity 35%, rating 25%, attributes 25%, distance 15%)\n"
+        "    * Returns ranked recommendations as formatted text\n"
+        "    * Replaces the old separate rag_agent and recommender_agent workflow\n"
         "  • summarizer_agent – combines and refines results from other agents to generate the final, human-readable response.\n"
         "  • route_agent – computes routes and generates interactive map views GIVEN coordinates (lat/long); does not perform geocoding.\n"
-        "  • rag_agent – performs retrieval-augmented generation operations:\n"
-        "    * Stores restaurant data in Neo4j knowledge graph and Pinecone vector database\n"
-        "    * Searches for semantically similar restaurants using vector similarity\n"
-        "    * Accepts place data from places_agent results as JSON string (NOT file paths)\n"
-        "    * Use for knowledge base building and semantic search queries\n"
         "- Routing guide:\n"
         "  • Location/place search or address→coordinates (user or restaurant) → places_agent\n"
         "  • YouTube history, channels, or interest-based profiling → user_profile_agent\n"
-        "  • Knowledge-based questions or document retrieval → rag_agent\n"
-        "  • Store restaurant data for later retrieval → rag_agent (after places_agent provides data)\n"
-        "  • Find similar restaurants by semantic search → rag_agent\n"
-        "  • Ranking, comparison, or shortlisting → recommender_agent\n"
+        "  • Get personalized restaurant recommendations → places_agent → (optional: user_profile_agent) → rag_recommender_agent → summarizer_agent\n"
         "  • Routing / map visualization when coordinates are known → route_agent\n"
         "  • When all required information has been gathered, produce the final answer → summarizer_agent exactly once.\n"
         "- Do not solve tasks yourself. Use handoff tools to delegate when additional work is required.\n"
         "- If the request is unclear or missing critical information (e.g., starting address or selected restaurant), ask ONE short clarifying question before delegating.\n"
         "- Multi-step handling (typical flows):\n"
         "  • Place search only: places_agent → summarizer_agent\n"
-        "  • Recommendations: places_agent → recommender_agent → summarizer_agent\n"
+        "  • Personalized recommendations: places_agent → user_profile_agent → rag_recommender_agent → summarizer_agent\n"
+        "  • Quick recommendations (no user profile): places_agent → rag_recommender_agent → summarizer_agent\n"
         "  • Route/map: places_agent (geocode addresses to lat/long) → route_agent (compute route & map) → summarizer_agent\n"
-        "  • Knowledge base building: places_agent → rag_agent (store data) → summarizer_agent\n"
-        "  • Semantic search: rag_agent (query vector DB) → summarizer_agent\n"
-        "  • Store and query: places_agent → rag_agent (store + query similar) → summarizer_agent\n"
+        "- CRITICAL: When routing to rag_recommender_agent, ensure:\n"
+        "  1. Place data is available in conversation (from places_agent)\n"
+        "  2. User profile is available if personalization requested (from user_profile_agent)\n"
+        "  3. Forward BOTH datasets in your handoff message to rag_recommender_agent\n"
         "- Pass only coordinates (lat/long) to route_agent; do not pass raw addresses.\n"
-        "- When routing to rag_agent after places_agent, ensure place data is available in conversation history.\n"
         "- After summarizer_agent produces the final JSON, stop delegating and end the run. Never re-call summarizer_agent without new information.\n"
         "- The summarizer_agent output is the final response shown to the user.\n"
         "- IMPORTANT: Once summarizer_agent provides the final answer, the conversation is COMPLETE. Do not route to any other agents.\n"
@@ -61,7 +58,7 @@ def build_app():
     )
 
     workflow = create_supervisor(
-        agents=[places, user_profile, recommender, summarizer, route, rag],
+        agents=[places, user_profile, rag_recommender, summarizer, route],
         model=init_chat_model("openai:gpt-4o-mini"),
         tools=[forward_tool],              # your handoff tools will be auto-added
         prompt=supervisor_prompt,
