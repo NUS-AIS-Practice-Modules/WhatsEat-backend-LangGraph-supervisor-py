@@ -242,94 +242,151 @@ def place_geocode(address: str) -> Dict[str, Any]:
 
 
 @tool("places_text_search", return_direct=False)
-def places_text_search(query: str, region: str = "SG") -> Dict[str, Any]:
-    """Text search a place on Google Places API. Returns JSON-like dict."""
-    field_mask = ",".join(
-        [
-            "places.id",
-            "places.displayName",
-            "places.formattedAddress",
-            "places.location",
-            "places.googleMapsUri",
-            "places.rating",
-            "places.userRatingCount",
-            "places.priceLevel",
-            "places.types",
-            "places.photos.name",
-            "places.generativeSummary",
-        ]
-    )
-    payload: Dict[str, Any] = {"textQuery": query, "pageSize": 10}
-    if region:
-        payload["regionCode"] = region
-    data = _call_places("POST", "/places:searchText",
-                        field_mask=field_mask, json_body=payload)
-    places = [_normalize_place(item) for item in data.get("places", [])]
-    return {"query": query, "region": region, "candidates": places}
+def places_text_search(
+    query: str,
+    region: str = "SG",
+    page_size: int = 20,
+    page_limit: int = 3,
+) -> Dict[str, Any]:
+    """Text search a place on Google Places API (v1).
+    - 自动分页：page_size ∈ [1,20]，携带 nextPageToken 连续请求，最多抓取 page_limit 页。
+    - 返回字段：用 FieldMask 精确控制。
+    """
+    page_size = max(1, min(page_size, 20))
+
+    field_mask = ",".join([
+        "places.id",
+        "places.displayName",
+        "places.formattedAddress",
+        "places.location",
+        "places.googleMapsUri",
+        "places.rating",
+        "places.userRatingCount",
+        "places.priceLevel",
+        "places.types",
+        "places.photos.name",
+        "places.generativeSummary",
+        "nextPageToken",
+    ])
+
+    all_places: List[Dict[str, Any]] = []
+    page_token: Optional[str] = None
+
+    for _ in range(max(1, page_limit)):
+        payload: Dict[str, Any] = {"textQuery": query, "pageSize": page_size}
+        if region:
+            payload["regionCode"] = region
+        if page_token:
+            payload["pageToken"] = page_token
+
+        data = _call_places("POST", "/places:searchText",
+                            field_mask=field_mask, json_body=payload)
+        batch = [_normalize_place(item) for item in data.get("places", [])]
+        all_places.extend(batch)
+
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+        # 官方提示：token 可能需要短暂等待才有效，这里轻微退避
+        time.sleep(0.6)
+
+    return {"query": query, "region": region, "candidates": all_places}
+
 
 
 @tool("places_coordinate_search", return_direct=False)
 def places_coordinate_search(
     latitude: float,
     longitude: float,
-    radius: float = 1500.0,
-    max_results: int = 20,
+    radius: float = 3000.0,
+    max_results_per_call: int = 20,
     rank_by: str = "POPULARITY",
+    rings: int = 1,
+    fans_per_ring: int = 6,
+    ring_step_meters: float = 1500.0,
 ) -> Dict[str, Any]:
-    """Search for nearby restaurants using coordinates and radius on Google Places API.
-
-    Args:
-        latitude: Center point latitude
-        longitude: Center point longitude
-        radius: Search radius in meters (default: 1500.0)
-        max_results: Maximum number of results to return (default: 20, max: 20)
-        rank_by: Ranking preference - "POPULARITY" or "DISTANCE" (default: "POPULARITY")
-
-    Returns JSON-like dict with nearby restaurant candidates.
+    """Nearby search for restaurants using coordinates (Places API v1).
+    - 单次调用：使用 searchNearby，maxResultCount 设为 ≤20（更高值不保证放大，实测常≤20）。
+    - 扩大范围与数量：可选“扇形多圆扫描”，在中心周围按 rings/fans 扩展多个圆，逐一请求并合并去重。
+    - 排序：rankPreference 支持 POPULARITY / DISTANCE。
+    - 注意：必须设置 FieldMask（X-Goog-FieldMask）。
     """
-    field_mask = ",".join(
-        [
-            "places.id",
-            "places.displayName",
-            "places.formattedAddress",
-            "places.location",
-            "places.googleMapsUri",
-            "places.rating",
-            "places.userRatingCount",
-            "places.priceLevel",
-            "places.types",
-            "places.photos.name",
-            "places.generativeSummary",
-        ]
-    )
 
-    # Ensure max_results doesn't exceed API limit
-    max_results = min(max_results, 20)
+    field_mask = ",".join([
+        "places.id",
+        "places.displayName",
+        "places.formattedAddress",
+        "places.location",
+        "places.googleMapsUri",
+        "places.rating",
+        "places.userRatingCount",
+        "places.priceLevel",
+        "places.types",
+        "places.photos.name",
+        "places.generativeSummary",
+    ])
 
-    # Validate rank_by parameter
     rank_preference = rank_by.upper() if rank_by.upper() in {"POPULARITY", "DISTANCE"} else "POPULARITY"
 
-    payload: Dict[str, Any] = {
-        "includedTypes": ["restaurant"],
-        "maxResultCount": max_results,
-        "rankPreference": rank_preference,
-        "locationRestriction": {
-            "circle": {
-                "center": {"latitude": latitude, "longitude": longitude},
-                "radius": radius
+    def _one_call(lat: float, lng: float, rad: float) -> List[Dict[str, Any]]:
+        payload = {
+            "includedTypes": ["restaurant"],
+            "maxResultCount": max(1, min(int(max_results_per_call), 20)),
+            "rankPreference": rank_preference,
+            "locationRestriction": {
+                "circle": {
+                    "center": {"latitude": lat, "longitude": lng},
+                    "radius": float(rad)
+                }
             }
         }
-    }
+        data = _call_places("POST", "/places:searchNearby",
+                            field_mask=field_mask, json_body=payload)
+        return [_normalize_place(item) for item in data.get("places", [])]
 
-    data = _call_places("POST", "/places:searchNearby",
-                        field_mask=field_mask, json_body=payload)
-    places = [_normalize_place(item) for item in data.get("places", [])]
+    # 先查中心圆
+    merged: Dict[str, Dict[str, Any]] = {}
+    for item in _one_call(latitude, longitude, radius):
+        if item.get("place_id"):
+            merged[item["place_id"]] = item
+
+    # 扇形多圆扩展（rings 层，每层 fans_per_ring 个方向）
+    # 角度均分；经纬换算：1°纬度≈111_320m；经度需乘 cos(lat)
+    import math
+    lat_rad = math.radians(latitude)
+    meters_per_deg_lat = 111_320.0
+    meters_per_deg_lng = meters_per_deg_lat * math.cos(lat_rad)
+
+    def offset_latlng(lat0: float, lng0: float, dx_m: float, dy_m: float) -> (float, float):
+        dlat = dy_m / meters_per_deg_lat
+        dlng = dx_m / meters_per_deg_lng if meters_per_deg_lng != 0 else 0.0
+        return lat0 + dlat, lng0 + dlng
+
+    for r in range(1, max(0, rings) + 1):
+        ring_radius_m = r * ring_step_meters
+        for k in range(max(1, fans_per_ring)):
+            theta = 2 * math.pi * (k / max(1, fans_per_ring))
+            dx = ring_radius_m * math.cos(theta)
+            dy = ring_radius_m * math.sin(theta)
+            lat_i, lng_i = offset_latlng(latitude, longitude, dx, dy)
+            # 每个点用同一搜索半径；你也可以按需增大
+            batch = _one_call(lat_i, lng_i, radius)
+            for item in batch:
+                pid = item.get("place_id")
+                if pid and pid not in merged:
+                    merged[pid] = item
+
+            # 轻微退避，避免 QPS/配额触发
+            time.sleep(0.15)
+
+    # 输出
     return {
         "center": {"lat": latitude, "lng": longitude},
         "radius": radius,
         "rank_by": rank_preference,
-        "candidates": places
+        "candidates": list(merged.values()),
     }
+
 
 
 @tool("places_fetch_photos")
