@@ -29,7 +29,7 @@ export function ChatPanel({
         return;
       }
       setInput("");
-      // 发送消息时携带用户位置信息
+      // Include the latest user location when sending a message
       await sendMessage(message, userLocation);
     },
     [input, sendMessage, userLocation]

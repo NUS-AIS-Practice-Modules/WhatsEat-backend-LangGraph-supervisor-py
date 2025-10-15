@@ -104,6 +104,15 @@ function extractText(message: LangGraphMessage): string {
   return "";
 }
 
+const LOCATION_METADATA_PATTERN = /\n*\[(?:用户位置信息|User location)[^\]]*\]\s*$/iu;
+
+function stripLocationMetadata(text: string): string {
+  if (!text) {
+    return "";
+  }
+  return text.replace(LOCATION_METADATA_PATTERN, "").trimEnd();
+}
+
 function extractPayload(message: LangGraphMessage): SupervisorPayload | null {
   const additional = message.additional_kwargs;
   if (additional && typeof additional === "object" && "structured_output" in additional) {
@@ -164,19 +173,20 @@ function resolveRole(message: LangGraphMessage): ChatMessage["role"] | null {
 }
 
 function normalizeMessages(items: LangGraphMessage[]): ChatMessage[] {
-const normalized: ChatMessage[] = [];
+  const normalized: ChatMessage[] = [];
   for (const message of items) {
     const role = resolveRole(message);
     if (!role) {
       continue;
     }
+    const rawContent = extractText(message);
     normalized.push({
       id: message.id ?? crypto.randomUUID(),
       role,
-      content: extractText(message),
+      content: stripLocationMetadata(rawContent),
       payload: extractPayload(message),
     });
-}
+  }
   return normalized;
 }
 
@@ -253,10 +263,10 @@ export function useLanggraphChat(): ChatController {
       const threadId = threadIdRef.current;
       const assistantId = assistantIdRef.current;
 
-      // 如果提供了位置信息，将其附加到消息内容中
+      // Augment the outgoing message with location metadata when available
       let enrichedContent = content;
       if (location) {
-        enrichedContent = `${content}\n\n[用户位置信息: 纬度 ${location.latitude}, 经度 ${location.longitude}]`;
+        enrichedContent = `${content}\n\n[User location: latitude ${location.latitude}, longitude ${location.longitude}]`;
       }
 
       const optimisticMessage: ChatMessage = {
@@ -271,7 +281,7 @@ export function useLanggraphChat(): ChatController {
       setError(null);
 
       try {
-        // 构建发送给 supervisor 的消息，包含位置信息
+        // Build the payload sent to the supervisor, including location metadata
         const messagePayload: Record<string, unknown> = {
           messages: [
             {
@@ -281,7 +291,7 @@ export function useLanggraphChat(): ChatController {
           ],
         };
 
-        // 如果有位置信息，将其作为独立字段传递
+        // Pass the structured location fields separately for downstream use
         if (location) {
           messagePayload.user_location = {
             latitude: location.latitude,

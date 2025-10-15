@@ -19,7 +19,8 @@ export interface LocationController extends LocationState {
 }
 
 /**
- * 自定义 Hook 用于获取用户的地理位置
+ * Custom hook that retrieves the user location and exposes helpers to
+ * request or clear the coordinates while managing loading/error state.
  */
 export function useLocation(): LocationController {
   const [coordinates, setCoordinates] = useState<LocationCoordinates | null>(null);
@@ -27,15 +28,13 @@ export function useLocation(): LocationController {
   const [error, setError] = useState<string | null>(null);
   const [isSupported, setIsSupported] = useState(false);
 
-  // 检查浏览器是否支持地理定位
   useEffect(() => {
     setIsSupported("geolocation" in navigator);
   }, []);
 
-  // 请求获取用户位置
   const requestLocation = useCallback(async () => {
     if (!navigator.geolocation) {
-      setError("您的浏览器不支持地理定位功能");
+      setError("Your browser does not support geolocation.");
       return;
     }
 
@@ -48,9 +47,9 @@ export function useLocation(): LocationController {
           resolve,
           reject,
           {
-            enableHighAccuracy: true, // 启用高精度
-            timeout: 10000, // 10秒超时
-            maximumAge: 0, // 不使用缓存的位置
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
           }
         );
       });
@@ -62,32 +61,31 @@ export function useLocation(): LocationController {
       };
 
       setCoordinates(newCoordinates);
-      console.log("位置获取成功:", newCoordinates);
+      console.log("Location acquired:", newCoordinates);
     } catch (err) {
-      let errorMessage = "无法获取您的位置";
+      let errorMessage = "We couldn’t determine your location.";
 
       if (err instanceof GeolocationPositionError) {
         switch (err.code) {
           case err.PERMISSION_DENIED:
-            errorMessage = "您拒绝了位置权限请求，请在浏览器设置中允许位置访问";
+            errorMessage = "You denied the location request. Please enable access in your browser settings.";
             break;
           case err.POSITION_UNAVAILABLE:
-            errorMessage = "位置信息暂时不可用，请稍后再试";
+            errorMessage = "Location information is currently unavailable. Please try again later.";
             break;
           case err.TIMEOUT:
-            errorMessage = "获取位置超时，请检查网络连接后重试";
+            errorMessage = "The location request timed out. Check your network connection and try again.";
             break;
         }
       }
 
       setError(errorMessage);
-      console.error("位置获取失败:", err);
+      console.error("Failed to acquire location:", err);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // 清除位置信息
   const clearLocation = useCallback(() => {
     setCoordinates(null);
     setError(null);
