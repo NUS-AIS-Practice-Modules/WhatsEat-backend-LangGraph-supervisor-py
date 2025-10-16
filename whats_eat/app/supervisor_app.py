@@ -8,7 +8,6 @@ from whats_eat.langgraph_supervisor import (
 from whats_eat.agents.places_agent import build_places_agent
 from whats_eat.agents.user_profile_agent import build_user_profile_agent
 from whats_eat.agents.summarizer_agent import build_summarizer_agent
-from whats_eat.agents.route_agent import build_route_agent
 from whats_eat.agents.rag_recommender_agent import build_rag_recommender_agent
 
 
@@ -16,7 +15,6 @@ def build_app():
     places = build_places_agent()
     user_profile = build_user_profile_agent()
     summarizer = build_summarizer_agent()
-    route = build_route_agent()
     rag_recommender = build_rag_recommender_agent()
 
     # Optional extra tool: forward a worker's exact wording to the user
@@ -90,14 +88,14 @@ def build_app():
         "- Once summarizer_agent has produced the final JSON output, the process is complete; never call it again unless new information is introduced."
     )
     workflow = create_supervisor(
-        agents=[places, user_profile, rag_recommender, summarizer, route],
+        agents=[places, user_profile, rag_recommender, summarizer],
         model=init_chat_model("openai:gpt-4o-mini"),
         tools=[forward_tool],              # your handoff tools will be auto-added
         prompt=supervisor_prompt,
-        add_handoff_messages=True,         # include "transfer" messages
-        add_handoff_back_messages=True,    # include "transfer back" messages
-        # add_handoff_messages=False,          # omit "transfer" messages
-        # add_handoff_back_messages=False,     # omit "transfer back" messages
+        # add_handoff_messages=True,         # include "transfer" messages
+        # add_handoff_back_messages=True,    # include "transfer back" messages
+        add_handoff_messages=False,          # omit "transfer" messages
+        add_handoff_back_messages=False,     # omit "transfer back" messages
         output_mode="last_message",        # or "full_history" to include full traces
         include_agent_name="inline",       # robust name exposure for models
         parallel_tool_calls=True,         # 1-at-a-time handoffs (tutorial style)

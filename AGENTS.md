@@ -142,7 +142,7 @@
 
 ## 9. Maintenance Notes / 维护记录
 
-- **2025-10-14**: Repository-wide `AGENTS.md` rewritten to reflect current `whats_eat` layout, tooling, and quality bars; supersedes prior guidance referencing `apps/whatseat`. / 2025-10-14：重写 `AGENTS.md`，更新为现有 `whats_eat` 结构与规范，取代旧版 `apps/whatseat` 相关指引。
+- **2025-10-14**: Repository-wide `AGENTS.md` rewritten to reflect current `whats_eat` layout, tooling, and quality bars; supersedes prior guidance referencing `users/whatseat`. / 2025-10-14：重写 `AGENTS.md`，更新为现有 `whats_eat` 结构与规范，取代旧版 `apps/whatseat` 相关指引。
 - Keep this section chronological; include author, summary, and impacted areas for future edits. / 后续修改请按时间顺序记录，写明作者、摘要与影响范围。
 
 ---

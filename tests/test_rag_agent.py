@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Load environment variables before importing tools
-from whats_eat.app.env_loader import load_env
+from whats_eat.configuration.env_loader import load_env
 load_env()
 
 from whats_eat.tools.RAG import process_places_data, query_similar_places_tool, RAGTools
