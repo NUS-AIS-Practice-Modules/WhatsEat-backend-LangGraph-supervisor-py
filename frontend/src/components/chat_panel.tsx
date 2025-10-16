@@ -9,6 +9,53 @@ interface ChatPanelProps extends ChatController {
   location: LocationController;
 }
 
+/**
+ * 从用户消息中提取地址或邮编
+ * 支持多种格式：
+ * - "near 238801" 或 "at Marina Bay"
+ * - "在 238801" 或 "邮编 238801"
+ * - 直接的6位数字邮编
+ * - 包含地址关键词的完整地址
+ */
+function extractAddressFromMessage(message: string): string | null {
+  const lowerMessage = message.toLowerCase();
+  
+  // 1. 检测邮编格式（6位数字）
+  const zipCodeMatch = message.match(/\b(\d{6})\b/);
+  if (zipCodeMatch) {
+    return zipCodeMatch[1];
+  }
+  
+  // 2. 检测带关键词的地址（英文）
+  // 支持: near/at/in/from/around + 地址
+  const englishAddressMatch = message.match(/(?:near|at|in|from|around)\s+([\w\s,.-]+?)(?:\s+(?:find|search|show|recommend|get)|$)/i);
+  if (englishAddressMatch && englishAddressMatch[1]) {
+    const address = englishAddressMatch[1].trim();
+    // 确保提取的内容有一定长度
+    if (address.length >= 3) {
+      return address;
+    }
+  }
+  
+  // 3. 检测中文地址关键词
+  // 支持: 在/邮编/地址 + 地址信息
+  const chineseAddressMatch = message.match(/(?:在|邮编|地址|从)\s*([\w\s,，。.、-]+?)(?:\s*(?:找|搜|查|推荐)|$)/);
+  if (chineseAddressMatch && chineseAddressMatch[1]) {
+    const address = chineseAddressMatch[1].trim();
+    if (address.length >= 2) {
+      return address;
+    }
+  }
+  
+  // 4. 检测常见地名模式（新加坡地区）
+  const singaporeAreaMatch = message.match(/\b(marina bay|orchard|sentosa|chinatown|bugis|raffles place|clarke quay|little india|tanjong pagar|dhoby ghaut|city hall|jurong|tampines|bedok|woodlands|yishun|ang mo kio|bishan|serangoon|hougang|punggol|sengkang)\b/i);
+  if (singaporeAreaMatch) {
+    return singaporeAreaMatch[0];
+  }
+  
+  return null;
+}
+
 export function ChatPanel({
   messages,
   sendMessage,
@@ -29,10 +76,31 @@ export function ChatPanel({
         return;
       }
       setInput("");
-      // 发送消息时携带用户位置信息
-      await sendMessage(message, userLocation);
+      
+      // 如果用户还没有定位，尝试从消息中提取地址并获取经纬度
+      let locationToUse = userLocation;
+      if (!userLocation) {
+        // 尝试提取地址或邮编
+        const addressToGeocode = extractAddressFromMessage(message);
+        
+        if (addressToGeocode) {
+          console.log("检测到地址信息，正在获取坐标:", addressToGeocode);
+          try {
+            const coordinates = await location.setCoordinatesFromAddress(addressToGeocode);
+            if (coordinates) {
+              locationToUse = coordinates;
+              console.log("成功获取坐标:", locationToUse);
+            }
+          } catch (err) {
+            console.warn("自动地址识别失败，继续发送消息:", err);
+          }
+        }
+      }
+      
+      // 发送消息时携带用户位置信息（可能是原有的定位，也可能是从地址转换的）
+      await sendMessage(message, locationToUse);
     },
-    [input, sendMessage, userLocation]
+    [input, sendMessage, userLocation, location]
   );
 
   const handleReset = useCallback(() => {
@@ -99,11 +167,23 @@ export function ChatPanel({
         </button>
 
         {userLocation ? (
-          <div className="flex items-center gap-2 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-            <span>✅</span>
-            <span>Location acquired — we will use your current position for nearby searches.</span>
+          userLocation.source === 'browser' ? (
+            <div className="flex items-center gap-2 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+              <span>✅</span>
+              <span>已通过浏览器定位获取位置 — 将使用您的当前位置进行附近搜索</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+              <span>📍</span>
+              <span>已通过地址设置位置 — 将使用该位置进行附近搜索</span>
+            </div>
+          )
+        ) : (
+          <div className="flex items-center gap-2 rounded border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700">
+            <span>💡</span>
+            <span>提示：您可以在消息中输入地址或邮编（如 "near 238801" 或 "在 Marina Bay"），系统会自动识别并使用该位置</span>
           </div>
-        ) : null}
+        )}
 
         <div className="flex items-center gap-2">
           <input
@@ -124,7 +204,9 @@ export function ChatPanel({
             disabled={location.isLoading}
             className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${
               userLocation
-                ? "bg-green-500 text-white hover:bg-green-600"
+                ? userLocation.source === 'browser'
+                  ? "bg-green-500 text-white hover:bg-green-600"
+                  : "bg-blue-500 text-white hover:bg-blue-600"
                 : location.isLoading
                 ? "cursor-not-allowed bg-slate-300 text-slate-500"
                 : "bg-orange-500 text-white hover:bg-orange-600"

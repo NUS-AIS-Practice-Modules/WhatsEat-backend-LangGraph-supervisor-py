@@ -4,6 +4,7 @@ export interface LocationCoordinates {
   latitude: number;
   longitude: number;
   accuracy?: number;
+  source?: 'browser' | 'address'; // 定位来源：浏览器定位或地址输入
 }
 
 export interface LocationState {
@@ -16,6 +17,8 @@ export interface LocationState {
 export interface LocationController extends LocationState {
   requestLocation: () => Promise<void>;
   clearLocation: () => void;
+  setCoordinatesFromAddress: (address: string) => Promise<LocationCoordinates | null>;
+  setCoordinatesManually: (coordinates: LocationCoordinates) => void;
 }
 
 /**
@@ -59,6 +62,7 @@ export function useLocation(): LocationController {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         accuracy: position.coords.accuracy,
+        source: 'browser',
       };
 
       setCoordinates(newCoordinates);
@@ -93,6 +97,63 @@ export function useLocation(): LocationController {
     setError(null);
   }, []);
 
+  // 手动设置坐标
+  const setCoordinatesManually = useCallback((coords: LocationCoordinates) => {
+    setCoordinates(coords);
+    setError(null);
+    console.log("手动设置位置:", coords);
+  }, []);
+
+  // 通过地址/邮编获取坐标
+  const setCoordinatesFromAddress = useCallback(async (address: string): Promise<LocationCoordinates | null> => {
+    if (!address.trim()) {
+      setError("请输入有效的地址或邮编");
+      return null;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // 使用 Google Geocoding API
+      const apiKey = "AIzaSyB5yMwQo7k6ilAjWviqhVph_UrGKQMXL6Q"; // 从地图 iframe 中获取的 key
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
+      );
+      
+      if (!response.ok) {
+        throw new Error("地理编码请求失败");
+      }
+
+      const data = await response.json();
+      
+      if (data.status !== "OK" || !data.results || data.results.length === 0) {
+        throw new Error("无法找到该地址对应的位置，请检查地址或邮编是否正确");
+      }
+
+      const location = data.results[0].geometry.location;
+      const newCoordinates: LocationCoordinates = {
+        latitude: location.lat,
+        longitude: location.lng,
+        source: 'address',
+      };
+
+      setCoordinates(newCoordinates);
+      console.log("通过地址获取位置成功:", newCoordinates, "地址:", data.results[0].formatted_address);
+      return newCoordinates;
+    } catch (err) {
+      let errorMessage = "无法获取位置信息";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+      console.error("地址转换失败:", err);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   return {
     coordinates,
     isLoading,
@@ -100,6 +161,8 @@ export function useLocation(): LocationController {
     isSupported,
     requestLocation,
     clearLocation,
+    setCoordinatesFromAddress,
+    setCoordinatesManually,
   };
 }
 
