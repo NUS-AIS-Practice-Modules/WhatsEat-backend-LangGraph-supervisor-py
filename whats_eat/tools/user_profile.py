@@ -578,7 +578,7 @@ import pathlib
 import json
 
 CLIENT_SECRET_ENV = "YOUTUBE_CLIENT_SECRET_PATH"  # 可自定义 client_secret.json 路径
-DEFAULT_CLIENT_SECRET = "whats_eat/tools/client_secret.json"
+DEFAULT_CLIENT_SECRET = "whats_eat/configuration/client_secret.json"
 
 
 def _client_secret_path() -> str:
@@ -590,7 +590,7 @@ def init_user_token(scopes: Optional[Sequence[str]] = None, client_secret_path: 
     交互式生成/修复当前用户的 token 文件。
     - 默认只读 YouTube，并自动追加 openid + userinfo.email 以获取邮箱
     - 若设置了 YOUTUBE_TOKEN_PATH 且不是默认 token.json，则优先写到该路径
-    - 否则写到 apps/whatseat/data/tokens/<email>.json
+    - 否则写到 users/whatseat/data/tokens/<email>.json
     返回写入的 token 绝对路径字符串
     """
     from google_auth_oauthlib.flow import InstalledAppFlow  # 仅此函数需要
@@ -621,14 +621,14 @@ def init_user_token(scopes: Optional[Sequence[str]] = None, client_secret_path: 
 
     # 5) 决定 token 写入路径
     #    - 若显式设置了 YOUTUBE_TOKEN_PATH 且不是默认 token.json，则用其值
-    #    - 否则自动写到 apps/whatseat/data/tokens/<email>.json（拿不到邮箱就回退到默认 _token_path()）
+    #    - 否则自动写到 users/whatseat/data/tokens/<email>.json（拿不到邮箱就回退到默认 _token_path()）
     explicit = os.getenv(TOKEN_ENV)  # YOUTUBE_TOKEN_PATH
     if explicit and explicit not in ("", "token.json"):
         token_path = pathlib.Path(explicit)
         token_path.parent.mkdir(parents=True, exist_ok=True)
     else:
         if email:
-            base_dir = pathlib.Path("apps/whatseat/data/tokens")
+            base_dir = pathlib.Path("users/whatseat/data/tokens")
             base_dir.mkdir(parents=True, exist_ok=True)
             safe_email = email.replace("/", "_")
             token_path = base_dir / f"{safe_email}.json"

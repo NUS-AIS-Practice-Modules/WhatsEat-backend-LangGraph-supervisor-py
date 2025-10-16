@@ -3,14 +3,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-import ssl
 from typing import Dict, List, Optional, Any
 
 from langchain_core.tools import tool
-from whats_eat.app.env_loader import load_env
+from whats_eat.configuration.env_loader import load_env
 from neo4j import GraphDatabase
 from openai import OpenAI
-import certifi
 
 # Load environment variables including .env.json
 load_env()
