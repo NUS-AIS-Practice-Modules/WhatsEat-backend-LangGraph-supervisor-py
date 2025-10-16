@@ -116,7 +116,11 @@ export function useLocation(): LocationController {
 
     try {
       // 使用 Google Geocoding API
-      const apiKey = "AIzaSyB5yMwQo7k6ilAjWviqhVph_UrGKQMXL6Q"; // 从地图 iframe 中获取的 key
+      const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+      if (!apiKey) {
+        throw new Error("未配置 Google Maps API 密钥，请联系管理员或在环境变量中设置 REACT_APP_GOOGLE_MAPS_API_KEY");
+      }
+
       const response = await fetch(
         `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
       );

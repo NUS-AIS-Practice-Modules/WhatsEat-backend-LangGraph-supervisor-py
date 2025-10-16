@@ -63,8 +63,10 @@ function RestaurantDetails({
     setActiveIndex(index);
   };
 
+  const googleMapsApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+
   const handleToggleMap = () => {
-    if (!userLocation || !card.address) {
+    if (!userLocation || !card.address || !googleMapsApiKey) {
       return;
     }
     if (!showMap) {
@@ -78,8 +80,68 @@ function RestaurantDetails({
 
   const currentPhoto = photos.length > 0 ? photos[activeIndex] ?? photos[0] : null;
   const hasMultiple = photos.length > 1;
-  const hasMap = Boolean(userLocation && card.address);
-  const sanitizedAddress = card.address?.replace(/"/g, '\\"');
+  const userLatitude = userLocation?.latitude;
+  const userLongitude = userLocation?.longitude;
+  const hasMap = Boolean(userLocation && card.address && googleMapsApiKey);
+  const mapSrcDoc = useMemo(() => {
+    if (
+      userLatitude == null ||
+      userLongitude == null ||
+      !card.address ||
+      !googleMapsApiKey
+    ) {
+      return null;
+    }
+
+    const originLiteral = JSON.stringify({
+      lat: userLatitude,
+      lng: userLongitude,
+    });
+    const destinationLiteral = JSON.stringify(card.address ?? "");
+    const apiKeyParam = encodeURIComponent(googleMapsApiKey);
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Route Map</title>
+  <style>
+    body { margin:0; padding:0; }
+    #map { width: 100%; height: 100vh; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  const ORIGIN = ${originLiteral};
+  const DEST_ADDR = ${destinationLiteral};
+
+  let map, dirSvc, dirRenderer;
+  function initMap() {
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: ORIGIN, zoom: 13
+    });
+    dirSvc = new google.maps.DirectionsService();
+    dirRenderer = new google.maps.DirectionsRenderer({ map: map });
+
+    dirSvc.route({
+      origin: ORIGIN,
+      destination: DEST_ADDR,
+      travelMode: google.maps.TravelMode.DRIVING
+    }, (res, status) => {
+      if (status === 'OK') {
+        dirRenderer.setDirections(res);
+      } else {
+        console.warn('Unable to load route: ' + status);
+      }
+    });
+  }
+  window.initMap = initMap;
+</script>
+<script async defer src="https://maps.googleapis.com/maps/api/js?key=${apiKeyParam}&callback=initMap"></script>
+</body>
+</html>`;
+  }, [card.address, googleMapsApiKey, userLatitude, userLongitude]);
 
   return (
     <div className="flex w-full justify-center px-2 sm:px-4 perspective-1200">
@@ -106,47 +168,7 @@ function RestaurantDetails({
             {showMap && hasMap ? (
               <div className="relative mb-5 h-60 w-full overflow-hidden rounded-lg bg-white lg:h-64">
                 <iframe
-                  srcDoc={`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Route Map</title>
-  <style>
-    body { margin:0; padding:0; }
-    #map { width: 100%; height: 100vh; }
-  </style>
-</head>
-<body>
-<div id="map"></div>
-<script>
-  const ORIGIN = { lat: ${userLocation?.latitude}, lng: ${userLocation?.longitude} };
-  const DEST_ADDR = "${sanitizedAddress ?? ""}";
-
-  let map, dirSvc, dirRenderer;
-  function initMap() {
-    map = new google.maps.Map(document.getElementById('map'), {
-      center: ORIGIN, zoom: 13
-    });
-    dirSvc = new google.maps.DirectionsService();
-    dirRenderer = new google.maps.DirectionsRenderer({ map: map });
-
-    dirSvc.route({
-      origin: ORIGIN,
-      destination: DEST_ADDR,
-      travelMode: google.maps.TravelMode.DRIVING
-    }, (res, status) => {
-      if (status === 'OK') {
-        dirRenderer.setDirections(res);
-      } else {
-        console.warn('Unable to load route: ' + status);
-      }
-    });
-  }
-  window.initMap = initMap;
-</script>
-<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB5yMwQo7k6ilAjWviqhVph_UrGKQMXL6Q&callback=initMap"></script>
-</body>
-</html>`}
+                  srcDoc={mapSrcDoc ?? undefined}
                   className="h-full w-full border-0"
                   title="Navigation Map"
                 />
