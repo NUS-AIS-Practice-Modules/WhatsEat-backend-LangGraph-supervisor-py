@@ -1,0 +1,112 @@
+[
+  {
+    "agent_name": "Places Agent",
+    "description": "Handles Google Places API searches, geocoding, and photo resolution",
+    "test_results": [
+      {
+        "test_name": "Search Italian restaurants in Singapore",
+        "status": "\u2705 PASS",
+        "input": "Find Italian restaurants in Singapore",
+        "expected": "Should return a list of Italian restaurants with details",
+        "output_summary": "content='{\\n  \"items\": [\\n    {\\n      \"id\": \"ChIJLXhQg6UZ2jER_QGp15ggBTY\",\\n      \"displayName\": \"Osteria Mozza\",\\n      \"formattedAddress\": \"333 Orchard Rd, Level 5, Singapore 238867\",\\n      \"locat",
+        "error": null
+      },
+      {
+        "test_name": "Search by coordinates",
+        "status": "\u2705 PASS",
+        "input": "Find restaurants near coordinates 1.3521, 103.8198",
+        "expected": "Should return nearby restaurants",
+        "output_summary": "content='{\\n  \"items\": [\\n    {\\n      \"id\": \"ChIJ2QdCQegb2jERpeuye8JoFDw\",\\n      \"displayName\": \"Keppel Club\",\\n      \"formattedAddress\": \"239 Sime Rd, Singapore 289685\",\\n      \"location\": {\\n     ",
+        "error": null
+      },
+      {
+        "test_name": "Search with price level",
+        "status": "\u2705 PASS",
+        "input": "Find affordable cafes in Orchard Road Singapore",
+        "expected": "Should return cafes with price information",
+        "output_summary": "content='{\\n  \"items\": [\\n    {\\n      \"id\": \"ChIJtQeyXlob2jERUIVN4nR_r8g\",\\n      \"displayName\": \"Sin & Savage Bakehouse\",\\n      \"formattedAddress\": \"169 Stirling Rd, #01-1153 Stirling View, Singapo",
+        "error": null
+      }
+    ],
+    "total_tests": 3,
+    "passed": 3,
+    "failed": 0
+  },
+  {
+    "agent_name": "User Profile Agent",
+    "description": "Generates user preference profiles from YouTube activity using embeddings",
+    "test_results": [
+      {
+        "test_name": "Generate user profile from YouTube channel",
+        "status": "\u2705 PASS",
+        "input": "Generate my food preference profile",
+        "expected": "Should return user profile with embeddings and preferences",
+        "output_summary": "content='{\\n  \"keywords\": [],\\n  \"attributes\": {},\\n  \"embedding_model\": \"text-embedding-3-small\",\\n  \"embedding_dim\": 1536,\\n  \"embedding\": [0.004700696945986594, -0.012470282398924547, 0.03371104539",
+        "error": null
+      }
+    ],
+    "total_tests": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  {
+    "agent_name": "RAG Recommender Agent",
+    "description": "Stores and retrieves restaurant data using Neo4j knowledge graph and Pinecone vector search",
+    "test_results": [
+      {
+        "test_name": "Process and store places data",
+        "status": "\u2705 PASS",
+        "input": "Store these places: [{\"name\": \"Paradise Dynasty\", \"formatted_address\": \"ION Orchard, Singapore\", \"ra",
+        "expected": "Should store places in Neo4j and Pinecone",
+        "output_summary": "content='The place data has been successfully ingested and stored. Please provide the user profile data for further processing.' additional_kwargs={'refusal': None} response_metadata={'token_usage': {",
+        "error": null
+      },
+      {
+        "test_name": "Query similar places",
+        "status": "\u2705 PASS",
+        "input": "Find restaurants similar to Chinese dim sum",
+        "expected": "Should return similar restaurants from vector database",
+        "output_summary": "content='```\\n\ud83c\udfaf TOP RECOMMENDATIONS FOR USER\\n\\nBased on preferences: []\\nTotal candidates analyzed: 10\\nTop 5 recommendations:\\n\\n1. Yang Kee Dumpling\\n   \ud83d\udccd Address: 2151 Cowell Blvd C, Davis, CA 956",
+        "error": null
+      }
+    ],
+    "total_tests": 2,
+    "passed": 2,
+    "failed": 0
+  },
+  {
+    "agent_name": "Summarizer Agent",
+    "description": "Generates final recommendation cards with rationale (no tool calls)",
+    "test_results": [
+      {
+        "test_name": "Generate summary cards for recommendations",
+        "status": "\u2705 PASS",
+        "input": "Summarize these restaurants: [{\"name\": \"Paradise Dynasty\", \"address\": \"ION Orchard\", \"rating\": 4.2, ",
+        "expected": "Should return JSON with cards array and rationale",
+        "output_summary": "content='{\\n  \"cards\": [\\n    {\\n      \"place_id\": \"1\",\\n      \"name\": \"Paradise Dynasty\",\\n      \"address\": \"ION Orchard\",\\n      \"photos\": [],\\n      \"price_level\": 3,\\n      \"rating\": 4.2,\\n      \"",
+        "error": null
+      }
+    ],
+    "total_tests": 1,
+    "passed": 1,
+    "failed": 0
+  },
+  {
+    "agent_name": "Route Agent",
+    "description": "Generates HTML maps with routes to recommended restaurants",
+    "test_results": [
+      {
+        "test_name": "Generate route map HTML",
+        "status": "\u2705 PASS",
+        "input": "Generate route map for: {\"origin\": {\"lat\": 1.3521, \"lng\": 103.8198, \"name\": \"Singapore\"}, \"destinati",
+        "expected": "Should return HTML map with routes",
+        "output_summary": "content='Here are the interactive route maps from your location in Singapore to the selected destinations:\\n\\n1. **Route to ION Orchard:**\\n   ```html\\n   <!DOCTYPE html>\\n   <html>\\n   <head>\\n     <",
+        "error": null
+      }
+    ],
+    "total_tests": 1,
+    "passed": 1,
+    "failed": 0
+  }
+]
