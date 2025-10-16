@@ -7,6 +7,7 @@ A Python library for creating hierarchical multi-agent systems using [LangGraph]
 - 🤖 **Create a supervisor agent** to orchestrate multiple specialized agents
 - 🛠️ **Tool-based agent handoff mechanism** for communication between agents
 - 📝 **Flexible message history management** for conversation control
+- 🖥️ **Generative UI frontend scaffold** built with React + LangGraph SDK for interactive demos
 
 This library is built on top of [LangGraph](https://github.com/langchain-ai/langgraph), a powerful framework for building agent applications, and comes with out-of-box support for [streaming](https://langchain-ai.github.io/langgraph/how-tos/#streaming), [short-term and long-term memory](https://langchain-ai.github.io/langgraph/concepts/memory/) and [human-in-the-loop](https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/)
 
@@ -100,6 +101,52 @@ result = app.invoke({
     ]
 })
 ```
+
+## Run the WhatsEat demo locally
+
+The repository also contains the WhatsEat supervisor workflow and a matching React UI. Follow the steps below to launch the
+LangGraph backend together with the frontend against it.
+
+### 1. Install backend dependencies
+
+```bash
+pip install uv  # skip if you already have uv installed
+uv sync         # creates .venv/ with the packages from pyproject.toml
+```
+
+Copy the sample environment file and provide your credentials:
+
+```bash
+cp .env.example .env
+```
+
+At minimum you need:
+
+- `OPENAI_API_KEY` for the `init_chat_model("openai:gpt-5-mini")` call used by the supervisor.
+- `GOOGLE_MAPS_API_KEY` so the Places and route tools can call the Google APIs.
+
+### 2. Start the LangGraph backend
+
+```bash
+uv run langgraph dev
+```
+
+The CLI reads `langgraph.json`, compiles the `agent` graph from `whats_eat/app/run.py`, and serves it at
+`http://localhost:2024` by default (pass `--port` if you need to override it).
+
+> [!TIP]
+> The bundled `langgraph.json` already points at the WhatsEat app entrypoint, so you can run the command without editing the file.
+
+### 3. Install and start the frontend
+
+```bash
+cd frontend
+pnpm install         # or npm/yarn
+cp .env.example .env # points the React app to http://localhost:2024 by default
+pnpm start
+```
+
+Open `http://localhost:3000` to interact with the WhatsEat supervisor UI. Update the environment variables if your backend runs on a different host or port.
 
 ## Message History Management
 
@@ -388,3 +435,30 @@ result = app.invoke({
 for m in result["messages"]:
     m.pretty_print()
 ```
+## Frontend (Generative UI)
+
+The `frontend/` directory contains a React application (Create React App) that follows the [LangGraph Generative UI tutorial](https://github.langchain.ac.cn/langgraphjs/cloud/how-tos/generative_ui_react/) and connects to the supervisor graph defined in `whats_eat/app/run.py`.
+
+1. Copy the template environment file:
+
+   ```bash
+   cd frontend
+   cp .env.example .env
+   ```
+
+2. Start the LangGraph backend (from the repository root):
+
+   ```bash
+   uv run langgraph dev
+   ```
+
+3. Install frontend dependencies and launch the dev server:
+
+   ```bash
+   pnpm install
+   pnpm start
+   ```
+
+   Update `.env` to point to your backend: `REACT_APP_LANGGRAPH_API_URL` defaults to `http://localhost:2024`. For LangGraph Cloud deployments, configure `REACT_APP_LANGGRAPH_API_URL`, `REACT_APP_LANGGRAPH_API_KEY`, and `REACT_APP_LANGGRAPH_GRAPH_ID` as needed.
+
+The frontend renders supervisor responses, including structured recommendation cards emitted by the backend agents.

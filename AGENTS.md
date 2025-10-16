@@ -1,465 +1,150 @@
-# AGENTS.md — WhatsEat Supervisor-based Multi-Agent (Aligned with `langgraph_supervisor` style)
-
-> This document is an **implementation guide + code conventions**. Requirements: **reuse** the existing capabilities in your fork’s `langgraph_supervisor/` (`create_supervisor`, `create_handoff_tool`, `create_forward_message_tool`, message and state types, etc.), **keep the same code style and naming habits**, and provide **clearly readable** directory and file names.  
-> Convention: This document treats **`langgraph_supervisor`** in the repo as the authoritative package name (if historical docs contain the misspelling `langgraph_supervisior`, this file takes precedence).
-
-------
-
-## 0. Code style and naming conventions (consistent with `langgraph_supervisor`)
-
-- **Naming**
-  - Directories & files: `snake_case`, e.g., `places_agent.py`, `fetch_place_photos.py`.
-  - Tool functions (tool names): `snake_case`, with a clear verb at the start: `place_text_search`, `build_gmaps_deeplink`.
-  - Pydantic models: `PascalCase`, e.g., `QuerySpec`, `UserTasteProfile`.
-  - Agent constructors: `build_<role>_agent()`.
-- **Types & comments**
-  - Full **type hints**; module-level docstrings briefly explain inputs/outputs.
-  - Pydantic v2 (`BaseModel`) defines tool input parameters and cross-agent state objects.
-- **I/O constraints**
-  - Tools return **small and stable** JSON/models; do not pass through large raw payloads from third-party APIs.
-  - Network tools must have `timeout` and **at most 2 exponential backoff retries**, and degrade behavior for 429/5xx.
-- **Structured state**
-  - Only put **structured objects** into `state`. Supervisor uses `output_mode="last_message"` to avoid bloated chat text.
-
-------
-
-## 1. Directory structure (at the fork’s root)
-
-```
-langgraph-supervisor-py/
-├─ langgraph_supervisor/                 # Keep as-is (do not modify public APIs)
-│  └─ ... (create_supervisor, create_handoff_tool, etc.)
-├─ apps/whatseat/
-│  ├─ agents/
-│  │  ├─ uia_agent.py                    # User-Intent Agent
-│  │  ├─ upa_agent.py                    # User Profile Agent
-│  │  ├─ rpa_agent.py                    # Restaurant Profile Agent
-│  │  ├─ pfa_agent.py                    # Preference Fusion Agent
-│  │  └─ eea_agent.py                    # Evidence & Enrichment Agent
-│  ├─ tools/
-│  │  ├─ places.py                       # Places/TextSearch/Details/Deeplink
-│  │  ├─ photos.py                       # Photos CDN URL
-│  │  ├─ youtube.py                      # YouTube history & topics
-│  │  ├─ scoring.py                      # Ranking / multi-objective fusion
-│  │  ├─ kg.py                           # ER extraction & KG upsert (placeholder; can be added later)
-│  │  └─ vector.py                       # Vectorization and ingestion (placeholder; can be added later)
-│  ├─ supervisor/
-│  │  ├─ prompt.py                       # Supervisor routing rules
-│  │  └─ workflow.py                     # create_supervisor + handoff definitions
-│  ├─ schemas.py                         # State & contract models (Pydantic)
-│  ├─ config.py                          # Constants / env vars / retry strategy
-│  ├─ run_demo.py                        # End-to-end example
-│  └─ tests/                             # Unit & integration tests
-└─ ...
-```
-
-------
-
-## 2. Shared State and data contracts (`apps/whatseat/schemas.py`)
-
-```
-# apps/whatseat/schemas.py
-from __future__ import annotations
-from typing import List, Dict, Optional
-from pydantic import BaseModel, Field
-
-class Geo(BaseModel):
-    lat: float
-    lng: float
-    radius: Optional[float] = Field(None, description="meters")
-
-class QuerySpec(BaseModel):
-    geo: Optional[Geo] = None
-    price_band: Optional[str] = None      # "$" | "$$" | "$$$"...
-    cuisines: List[str] = []
-    diet_restrictions: List[str] = []
-    party_size: Optional[int] = None
-    time_window: Optional[str] = None     # "today 19:00-21:00"
-
-class UserTasteProfile(BaseModel):
-    cuisines: List[str] = []
-    disliked: List[str] = []
-    ambience: List[str] = []
-    spice_level: Optional[str] = None
-    price_prior: Optional[str] = None
-    history_signals: Dict[str, dict] = {} # e.g., {"yt": {...}, "gmaps_cf": {...}}
-    updated_at: Optional[str] = None
-
-class RestaurantDoc(BaseModel):
-    place_id: str
-    name: str
-    address: Optional[str] = None
-    geo: Optional[Geo] = None
-    price_level: Optional[str] = None
-    cuisine_tags: List[str] = []
-    features: List[str] = []
-    short_desc: Optional[str] = None
-    embedding_id: Optional[str] = None
-    kg_node_id: Optional[str] = None
-
-class RankedItem(BaseModel):
-    place_id: str
-    score: float
-    why: List[str] = []
-    filters_passed: List[str] = []
-    cautions: List[str] = []
-
-class RankedList(BaseModel):
-    items: List[RankedItem] = []
-    rationale: Optional[str] = None
-
-class Evidence(BaseModel):
-    photos: List[str] = []
-    opening_hours: Optional[dict] = None
-    deeplink: Optional[str] = None
-    phone: Optional[str] = None
-    website: Optional[str] = None
-
-class AuditEvent(BaseModel):
-    stage: str
-    inputs_hash: Optional[str] = None
-    outputs_hash: Optional[str] = None
-    notes: Optional[str] = None
-```
-
-> On the graph state, extend `MessagesState`: only add the following keys: `query_spec`, `user_profile`, `candidates`, `ranked`, `evidence`, `audit`.
-
-------
-
-## 3. Tools layer (`apps/whatseat/tools/*.py`)
-
-> Expose with `@tool` + `args_schema`; **network tools** uniformly use `requests`, **timeout + 2 backoff retries**; degrade for 429/5xx. Below shows the “shells” and **minimal projections**—paste your notebook implementations into the `# TODO` parts.
-
-### 3.1 Places (`apps/whatseat/tools/places.py`)
-
-```
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
-from langchain_core.tools import tool
-import os, time, requests
-
-GOOGLE_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
-
-class TextSearchInput(BaseModel):
-    query: str
-    region_code: Optional[str] = None
-    location_bias: Optional[str] = Field(None, description="circle:2000@lat,lng")
-
-def _get(url: str, params: dict, tries: int = 3, timeout: int = 20):
-    for t in range(tries):
-        r = requests.get(url, params=params, timeout=timeout)
-        if r.status_code in (429, 500, 502, 503, 504):
-            time.sleep(2 ** t)
-            continue
-        r.raise_for_status()
-        return r
-    return r  # Return the last response; caller can decide how to handle
-
-@tool("place_text_search", args_schema=TextSearchInput)
-def place_text_search(query: str, region_code: Optional[str] = None,
-                      location_bias: Optional[str] = None) -> Dict[str, Any]:
-    assert GOOGLE_API_KEY, "Missing GOOGLE_MAPS_API_KEY"
-    url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-    params = {"query": query, "key": GOOGLE_API_KEY}
-    if region_code: params["region"] = region_code
-    if location_bias: params["locationbias"] = location_bias
-    r = _get(url, params)
-    data = r.json()
-    items = []
-    for it in data.get("results", [])[:25]:
-        items.append({
-            "place_id": it.get("place_id"),
-            "name": it.get("name"),
-            "address": it.get("formatted_address"),
-            "location": it.get("geometry", {}).get("location"),
-            "photo_refs": [p.get("photo_reference") for p in it.get("photos", [])] if it.get("photos") else []
-        })
-    return {"candidates": items}
-
-class DetailsBatchInput(BaseModel):
-    place_ids: List[str]
-
-@tool("place_details_batch", args_schema=DetailsBatchInput)
-def place_details_batch(place_ids: List[str]) -> List[Dict[str, Any]]:
-    assert GOOGLE_API_KEY, "Missing GOOGLE_MAPS_API_KEY"
-    out: List[Dict[str, Any]] = []
-    url = "https://maps.googleapis.com/maps/api/place/details/json"
-    fields = "place_id,name,formatted_address,geometry,opening_hours,website,international_phone_number,rating,user_ratings_total,photo,price_level"
-    for pid in place_ids:
-        r = _get(url, {"place_id": pid, "key": GOOGLE_API_KEY, "fields": fields})
-        res = r.json().get("result", {})
-        out.append(res)
-    return out
-
-class DeeplinkInput(BaseModel):
-    place_id: str
-    mode: str = "driving"
-    origin: Optional[str] = None
-
-@tool("build_gmaps_deeplink", args_schema=DeeplinkInput)
-def build_gmaps_deeplink(place_id: str, mode: str = "driving", origin: Optional[str] = None) -> str:
-    base = "https://www.google.com/maps/dir/?api=1"
-    dest = f"destination_place_id={place_id}"
-    mode_q = f"&travelmode={mode}"
-    ori_q = f"&origin={origin}" if origin else ""
-    return f"{base}&{dest}{mode_q}{ori_q}"
-```
-
-### 3.2 Photos (`apps/whatseat/tools/photos.py`)
-
-```
-from typing import Dict
-from pydantic import BaseModel, Field
-from langchain_core.tools import tool
-import os, requests
-
-GOOGLE_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
-
-class PhotoInput(BaseModel):
-    photo_reference: str
-    max_w: int = Field(800, ge=1, le=1600)
-    max_h: int = Field(800, ge=1, le=1600)
-
-@tool("fetch_place_photos", args_schema=PhotoInput)
-def fetch_place_photos(photo_reference: str, max_w: int = 800, max_h: int = 800) -> Dict[str, str]:
-    assert GOOGLE_API_KEY, "Missing GOOGLE_MAPS_API_KEY"
-    url = "https://maps.googleapis.com/maps/api/place/photo"
-    params = {"photoreference": photo_reference, "maxwidth": max_w, "maxheight": max_h, "key": GOOGLE_API_KEY}
-    resp = requests.get(url, params=params, allow_redirects=False, timeout=20)
-    final_url = resp.headers.get("Location") or resp.url
-    return {"photo_url": final_url}
-```
-
-### 3.3 YouTube (`apps/whatseat/tools/youtube.py`)
-
-```
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
-from langchain_core.tools import tool
-import os
-
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-
-class YTProfileInput(BaseModel):
-    user_id: Optional[str] = Field(None, description="App user id for OAuth mapping")
-    max_items: int = 50
-
-@tool("yt_fetch_history", args_schema=YTProfileInput)
-def yt_fetch_history(user_id: Optional[str] = None, max_items: int = 50) -> Dict[str, Any]:
-    assert YOUTUBE_API_KEY, "Missing YOUTUBE_API_KEY"
-    # TODO: Paste the Data API v3 implementation from your notebook; return VideoMeta[]
-    return {"videos": []}
-
-class YTInferInput(BaseModel):
-    videos: List[Dict[str, Any]]
-
-@tool("yt_topics_infer", args_schema=YTInferInput)
-def yt_topics_infer(videos: List[Dict[str, Any]]) -> Dict[str, Any]:
-    # TODO: Paste your topic/cuisine keyword extraction logic
-    return {"topic_keywords": [], "cuisine_keywords": [], "creators_top": []}
-```
-
-> Other tools: `gmaps_likes_fetch`, `item_item_cf`, `profile_merge`, `entity_relation_extract`, `kg_upsert`, `vector_embed_and_upsert`, `scoring_pipeline` can be stubbed following the same style.
-
-------
-
-## 4. Sub-agents (`apps/whatseat/agents/*.py`)
-
-> Uniformly build with `create_react_agent`; one constructor per file, named `build_<role>_agent()`. Prompts should **only state operating conventions** and **output contracts**.
-
-Example: **RPA** (Restaurant Profile Agent, `rpa_agent.py`)
-
-```
-# apps/whatseat/agents/rpa_agent.py
-from langgraph.prebuilt import create_react_agent
-from langchain_openai import ChatOpenAI
-from apps.whatseat.tools.places import place_text_search, place_details_batch
-from apps.whatseat.tools.kg import kg_upsert
-from apps.whatseat.tools.vector import vector_embed_and_upsert
-
-PROMPT = (
-    "You are the Restaurant Profile Agent.\n"
-    "- Use place_text_search to collect candidates (20-50).\n"
-    "- Use place_details_batch to fetch details.\n"
-    "- Project results to minimal RestaurantDoc fields.\n"
-    "- Upsert ER/Vector if available (best-effort). Return only compact list."
-)
-
-def build_rpa_agent():
-    return create_react_agent(
-        model=ChatOpenAI(model="gpt-4o"),
-        tools=[place_text_search, place_details_batch, kg_upsert, vector_embed_and_upsert],
-        name="restaurant_profile_agent",
-        prompt=PROMPT,
-    )
-```
-
-Others: `uia_agent.py` (only extracts `QuerySpec`), `upa_agent.py` (YouTube/CF fusion), `pfa_agent.py` (scoring), `eea_agent.py` (evidence) follow the same pattern.
-
-------
-
-## 5. Supervisor and handoff (`apps/whatseat/supervisor/workflow.py` & `prompt.py`)
-
-### 5.1 Routing prompt (`prompt.py`)
-
-```
-# apps/whatseat/supervisor/prompt.py
-SUPERVISOR_PROMPT = """
-You are the supervisor. Route one worker at a time.
-Rules:
-- Intent parsing -> UIA; user profile -> UPA; restaurant candidates -> RPA; scoring -> PFA; evidence -> EEA.
-- Do not call external APIs yourself; always delegate via handoff tools.
-- Prefer compact JSON; store structured objects in state, not in text history.
-Fallbacks:
-- If RPA candidates < 3, ask UIA to relax location/radius/price.
-- If no OAuth, skip UPA and proceed with session-only preferences.
-"""
-```
-
-### 5.2 Workflow and handoff (`workflow.py`)
-
-```
-# apps/whatseat/supervisor/workflow.py
-from __future__ import annotations
-from typing import Annotated
-from langgraph_supervisor import (
-    create_supervisor,
-    create_handoff_tool,
-    create_forward_message_tool,
-)
-from langgraph.prebuilt import create_react_agent, InjectedState
-from langgraph.graph.message import MessagesState
-from langgraph.types import Command, Send
-from langchain_openai import ChatOpenAI
-
-from apps.whatseat.agents.uia_agent import build_uia_agent
-from apps.whatseat.agents.upa_agent import build_upa_agent
-from apps.whatseat.agents.rpa_agent import build_rpa_agent
-from apps.whatseat.agents.pfa_agent import build_pfa_agent
-from apps.whatseat.agents.eea_agent import build_eea_agent
-from .prompt import SUPERVISOR_PROMPT
-
-def _handoff_to(agent_name: str, tool_name: str, description: str):
-    # Use the same handoff style as langgraph_supervisor: take a task description + inject state
-    def _factory():
-        @create_handoff_tool(agent_name=agent_name, name=tool_name, description=description)
-        def _tool(
-            task_description: Annotated[str, "What the next agent should do"],
-            state: Annotated[MessagesState, InjectedState],
-        ) -> Command:
-            # Only pass necessary fields to avoid blowing up history
-            payload = {
-                **state,
-                "messages": [{"role": "user", "content": task_description}],
-                # Structured objects to be read downstream: query_spec/user_profile/candidates/ranked/evidence
-            }
-            return Command(goto=[Send(agent_name, payload)], graph=Command.PARENT)
-        return _tool
-    return _factory()
-
-def build_workflow():
-    model = ChatOpenAI(model="gpt-4o")
-
-    agents = [
-        build_uia_agent(),
-        build_upa_agent(),
-        build_rpa_agent(),
-        build_pfa_agent(),
-        build_eea_agent(),
-    ]
-
-    handoffs = [
-        _handoff_to("user_intent_agent", "delegate_to_uia", "Extract/complete QuerySpec"),
-        _handoff_to("user_profile_agent", "delegate_to_upa", "Build UserTasteProfile"),
-        _handoff_to("restaurant_profile_agent", "delegate_to_rpa", "Collect & structure candidates"),
-        _handoff_to("preference_fusion_agent", "delegate_to_pfa", "Score & rank candidates"),
-        _handoff_to("evidence_agent", "delegate_to_eea", "Enrich Top-K with photos/hours/deeplinks"),
-        create_forward_message_tool("supervisor"),
-    ]
-
-    return create_supervisor(
-        agents=agents,
-        tools=handoffs,
-        model=model,
-        prompt=SUPERVISOR_PROMPT,
-        output_mode="last_message",
-        add_handoff_messages=True,
-        supervisor_name="supervisor",
-    )
-```
-
-------
-
-## 6. Running and memory (`apps/whatseat/run_demo.py`)
-
-```
-import uuid
-from langgraph.checkpoint.memory import InMemorySaver
-from apps.whatseat.supervisor.workflow import build_workflow
-
-if __name__ == "__main__":
-    app = build_workflow().compile(checkpointer=InMemorySaver())
-    cfg = {"configurable": {"thread_id": str(uuid.uuid4())}}
-
-    out = app.invoke(
-        {"messages": [{"role": "user",
-                       "content": "Find student-budget, heavy-flavor ramen near Changi, give 3 with images and navigation"}]},
-        config=cfg
-    )
-    for m in out["messages"]:
-        m.pretty_print()
-```
-
-------
-
-## 7. Tests and quality gates (`apps/whatseat/tests/`)
-
-- **Tool unit tests**: `test_tools_places.py`, `test_tools_photos.py`, `test_tools_youtube.py`
-  - Validate input schemas, lifecycles (429/5xx retries), and stability of output fields.
-- **Agent integration**: `test_agents_flow.py`
-  - Happy path: UIA→UPA→RPA→PFA→EEA.
-  - Degradations: no OAuth, insufficient RPA recall, missing images.
-- **End-to-end**: fix 3 query samples; assert `RankedList.items[0].score` is within a reasonable range and contains `why[]`.
-
-------
-
-## 8. Unified structure for the frontend
-
-```
-{
-  "cards": [
-    {
-      "place_id": "ChIJ...",
-      "name": "Ramen Keisuke",
-      "distance_km": 1.2,
-      "price_level": "$",
-      "tags": ["ramen","spicy","late-night"],
-      "why": ["close by","matches YouTube: ramen","budget-friendly"],
-      "photos": ["...jpg","...jpg"],
-      "opens": {"today_is_open": true, "closes_at": "23:00"},
-      "deeplink": "https://www.google.com/maps/dir/?api=1&..."
-    }
-  ],
-  "rationale": "Based on student budget and heavy-flavor preference, selected 3 from 36 candidates within 2km…"
-}
-```
-
-------
-
-## 9. Suggested implementation order
-
-1. `places.py` + `photos.py` → `rpa_agent.py` + `eea_agent.py` → get the minimal closed loop working (no profile).
-2. `youtube.py` + `upa_agent.py` → `pfa_agent.py` for session/profile fusion.
-3. Integrate `kg.py`/`vector.py` → in `rpa_agent.py` write and reference evidence to strengthen explainability.
-
-------
-
-### Appendix: Standard constructor signatures for each agent file
-
-- `apps/whatseat/agents/uia_agent.py` → `def build_uia_agent(): ...` (outputs only `QuerySpec`)
-- `apps/whatseat/agents/upa_agent.py` → `def build_upa_agent(): ...`
-- `apps/whatseat/agents/rpa_agent.py` → `def build_rpa_agent(): ...`
-- `apps/whatseat/agents/pfa_agent.py` → `def build_pfa_agent(): ...`
-- `apps/whatseat/agents/eea_agent.py` → `def build_eea_agent(): ...`
-
-> The above naming/style is consistent with the APIs and examples of `langgraph_supervisor`. After pasting your existing Jupyter code into the corresponding tool implementations, you can run directly via `run_demo.py`.
+# AGENTS.md — WhatsEat Multi-Agent Repository Guide / WhatsEat 多智能体仓库指南
+
+> This document aligns future contributors (human or AI) on architecture, workflows, and conventions for the WhatsEat backend and companion UI. / 本文档用于指导未来的人类或 AI 协作者，理解 WhatsEat 后端及配套前端的架构、流程与规范。
+
+---
+
+## 1. Project Overview / 项目概览
+
+- **Purpose 目的**: Provide a LangGraph-powered supervisor that orchestrates restaurant discovery, recommendation, routing, and retrieval-augmented answers for the WhatsEat experience. / 通过 LangGraph 构建的 Supervisor 协同多个专长代理，完成餐厅搜索、推荐、路线规划与 RAG 问答。
+- **Deliverables 交付物**:
+  - Python package `whats_eat` exposing `create_supervisor` helpers and the compiled LangGraph app used by LangGraph Server. / Python 包 `whats_eat` 提供 `create_supervisor` 等封装以及 LangGraph Server 所需的编译图。
+  - Frontend React demo (`frontend/`) consuming the supervisor API via LangGraph SDK. / React 前端示例（`frontend/`）通过 LangGraph SDK 调用 Supervisor。
+- **Execution Context 执行场景**: Agents are invoked by the supervisor built in `whats_eat/app/supervisor_app.py`, then compiled in `whats_eat/app/run.py` for CLI/Server hosting. / 代理由 `whats_eat/app/supervisor_app.py` 的监督者调度，并在 `whats_eat/app/run.py` 中编译以供 CLI 或 Server 运行。
+
+---
+
+## 2. Architecture & Module Breakdown / 架构与模块划分
+
+### 2.1 Backend package (`whats_eat/`) / 后端包
+- `app/` — configuration, environment loading, supervisor assembly, and LangGraph export. / 提供配置、环境变量加载、Supervisor 装配与 LangGraph 导出。
+  - `supervisor_app.py`: builds agents, creates forward tool, defines routing prompt, calls `create_supervisor`, and compiles to a runnable app. / 构建各代理、创建转发工具、定义路由提示词、调用 `create_supervisor` 并编译成可执行应用。
+  - `run.py`: exposes `app = build_app()` for LangGraph CLI/Server discovery. / 暴露 `app = build_app()` 供 LangGraph CLI/Server 发现。
+  - `env_loader.py`: loads `.env.json` > `.env` into process environment. / 优先读取 `.env.json`，再退回 `.env`，注入环境变量。
+  - `config.py` / `schemas.py`: shared configuration and state contracts (extend as needed). / 公共配置与状态模型（按需扩展）。
+- `langgraph_supervisor/` — reusable supervisor utilities. / 可复用的 Supervisor 工具集。
+  - `supervisor.py`: wraps LangGraph’s `StateGraph`, ensures consistent tool binding, output mode trimming, and handoff validation. / 封装 LangGraph `StateGraph`，提供工具绑定、输出模式裁剪与转交校验。
+  - `handoff.py`: default handoff and forward-message tools plus metadata helpers. / 定义默认转交工具、消息转发工具与元数据辅助。
+  - `agent_name.py`, `utils.py`: agent naming exposure helpers. / Agent 名称处理与工具函数。
+- `agents/` — REACT-style tool-using workers. / REACT 风格工具型执行代理。
+  - `places_agent.py`: Google Places & Geocoding search (text, coordinates, photos). / 执行 Google Places / Geocoding 搜索与图片解析。
+  - `user_profile_agent.py`: YouTube signals + OpenAI embedding profile. / 提取 YouTube 行为并生成 OpenAI 向量画像。
+  - `recommender_agent.py`: ranks/filter candidates via custom tools. / 通过自研工具执行候选排序与筛选。
+  - `summarizer_agent.py`: emits final JSON cards+rationale without tool calls. / 不调用工具，输出最终卡片与说明 JSON。
+  - `route_agent.py`: builds HTML maps/routes once coordinates are known. / 在已有经纬度时生成路线 HTML。
+  - `RAG_agent.py`: persists/query restaurants using Neo4j + Pinecone. / 使用 Neo4j + Pinecone 进行餐厅知识图谱写入与相似检索。
+- `tools/` — stateless (idempotent) integrations. / 无状态（幂等）工具集。
+  - `google_places.py`: HTTP client with retry/backoff, normalization, inline photo resolution. / 带回退重试、数据归一化、图片解析的 Google Places 客户端。
+  - `user_profile.py`: YouTube Data API + embeddings orchestration. / 管理 YouTube 数据与嵌入。
+  - `ranking.py`: ranking & filtering helpers for recommendations. / 推荐排序与过滤工具。
+  - `route_map.py`: static map HTML generator. / 静态路线图 HTML 生成。
+  - `RAG.py`: Neo4j, Pinecone, OpenAI utilities for ingestion/search. / 负责 Neo4j、Pinecone、OpenAI 的数据入库与检索。
+- `CallAPIs/`: exploratory notebooks demonstrating API usage. / API 探索用 Notebook。
+
+### 2.2 Tests (`tests/`) / 测试目录
+- Pytest-based functional and integration tests for supervisor and agents (e.g., `test_supervisor.py`, `test_rag_agent.py`). / 基于 Pytest 的 Supervisor 与代理测试。
+- Some tests require external services (Neo4j, Pinecone, OpenAI) and print diagnostic info; guard them with environment checks before running in CI. / 部分测试依赖外部服务并输出调试信息，CI 前需确认环境变量。
+
+### 2.3 Frontend (`frontend/`) / 前端
+- React + TypeScript app following LangGraph Generative UI tutorial, styled with Tailwind. / 基于 React + TypeScript，配合 Tailwind 的 LangGraph 教学式前端。
+- `src/hooks/use_langgraph_chat.ts` encapsulates API calls to LangGraph Server. / `src/hooks/use_langgraph_chat.ts` 封装 LangGraph Server API 调用。
+- Build scripts via `pnpm` (`start`, `build`). / 通过 `pnpm` 执行开发与构建。
+
+### 2.4 Runtime integration / 运行集成
+- `langgraph.json` declares the exported graph (`agent`) pointing to `whats_eat/app/run.py:app` and the `.env` file to load. / `langgraph.json` 声明导出的图 `agent`，指向 `whats_eat/app/run.py:app` 并指定 `.env`。
+- LangGraph CLI (`uv run langgraph dev`) reads this manifest to serve the supervisor locally. / LangGraph CLI 依赖该清单在本地启动 Supervisor。
+
+---
+
+## 3. Technology Stack & Roadmap / 技术栈与路线
+
+- **Python 3.11+**, LangGraph `0.6.x`, LangChain core/openai integrations. / Python 3.11+，LangGraph `0.6.x`，LangChain 生态。
+- OpenAI chat + embedding models (default `openai:gpt-5-mini`, `text-embedding-3-*`). / OpenAI 对话与嵌入模型。
+- Google Maps Places & Geocoding REST APIs (requires `GOOGLE_MAPS_API_KEY`). / Google 地点与地理编码接口。
+- Neo4j Aura + Pinecone for RAG storage; optional if features unused. / RAG 功能使用 Neo4j Aura 与 Pinecone，可按需启用。
+- React 18 + TypeScript + Tailwind for UI; bundler via CRA tooling. / React 18、TypeScript、Tailwind，基于 CRA 的构建流程。
+- Packaging managed by `uv` + PDM backend; `requirements.txt` mirrors dependencies. / 依赖由 `uv` + PDM backend 管理，`requirements.txt` 为镜像列表。
+- **Roadmap 提示**: notebooks and TODOs imply expanding KG/vector tooling (`RAG.py`) and optional agents (e.g., additional evidence retrieval). Plan experiments in notebooks before promoting to production code. / Notebook 与 TODO 暗示需强化知识图谱/向量功能，可先在 Notebook 中验证再迁移到正式模块。
+
+---
+
+## 4. Branching Strategy & Git Workflow / 分支策略与工作流
+
+- Current checkout uses branch `work`; historical tooling (e.g., Makefile) compares diffs against `master`. Align with your remote default (`main` or `master`) before running `make lint_diff`. / 当前检出为 `work` 分支，Makefile 中的 `lint_diff` 会与 `master` 比较，请根据远程默认分支（`main` 或 `master`）调整。
+- Suggested workflow / 推荐流程:
+  1. Branch naming: `feature/<short-description>`, `bugfix/<issue-id>`, `docs/<topic>`; use lowercase kebab or snake for readability. / 新建分支命名建议 `feature/描述`、`bugfix/编号`、`docs/主题`。
+  2. Rebase onto default branch regularly; resolve generated artifacts or notebooks outside commits when possible. / 定期与默认分支 rebase，避免提交生成产物或 Notebook 输出。
+  3. Pull requests must include updated tests/docs and reference this `AGENTS.md`. / PR 需更新相应测试与文档，并引用本指南。
+- Tag releases after passing integration tests; align backend and frontend tags when shipping coordinated features. / 集成测试通过后再打标签；前后端联动时同步版本号。
+
+---
+
+## 5. Build, Test, CI/CD, Deployment / 构建、测试、部署
+
+### 5.1 Environment / 环境
+- Copy `.env.example` → `.env` (frontend) and `.env.json` for backend secrets; `env_loader` prioritizes JSON. / 复制 `.env.example` 与 `.env.json`，`env_loader` 优先加载 JSON。
+- Required keys: `OPENAI_API_KEY`, `GOOGLE_MAPS_API_KEY`, `NEO4J_*`, `PINECONE_*`, optional `YOUTUBE_API_KEY`. / 必需密钥：`OPENAI_API_KEY`、`GOOGLE_MAPS_API_KEY`、`NEO4J_*`、`PINECONE_*`；可选 `YOUTUBE_API_KEY`。
+
+### 5.2 Backend build & serve / 后端
+- Install dependencies with `uv sync` (or `pip install -r requirements.txt`). / 使用 `uv sync` 或 `pip install -r requirements.txt`。
+- Local dev server: `uv run langgraph dev` (reads `langgraph.json`). / 本地开发服务器：`uv run langgraph dev`。
+- Optional script `setup.ps1` automates Windows environment provisioning. / `setup.ps1` 可用于 Windows 自动化环境配置。
+
+### 5.3 Frontend / 前端
+- `pnpm install`, `pnpm start` for development; `pnpm build` for production bundle. / 通过 `pnpm install`、`pnpm start` 开发，`pnpm build` 生成生产包。
+
+### 5.4 Testing / 测试
+- Run `make test` or `uv run pytest -vv --disable-socket --allow-unix-socket`. / 使用 `make test` 或 `uv run pytest -vv --disable-socket --allow-unix-socket`。
+- Linting: `make lint` (runs `ruff format`, `ruff check`, `uvx ty check`). / `make lint` 会执行 `ruff format`、`ruff check` 与 `uvx ty check`。
+- Watch mode: `make test_watch` (pytest-watch). / `make test_watch` 启用实时测试。
+- External service tests (Neo4j/Pinecone) skip automatically if keys missing; confirm before CI. / 依赖外部服务的测试若缺密钥会跳过，CI 前需确认。
+
+### 5.5 Deployment / 部署
+- Deploy backend via LangGraph Server or Cloud by publishing the compiled graph defined in `langgraph.json`; ensure environment variables accessible. / 通过 LangGraph Server 或 Cloud 发布 `langgraph.json` 所定义的图，确保环境变量可用。
+- Serve frontend static bundle behind CDN or integrate into backend stack. / 前端生产包可通过静态托管或集成到后端。
+
+---
+
+## 6. Agent Usage Guide & Code of Conduct / Agent 使用指南与行为规范
+
+1. **Preserve Supervisor Contracts** / **保持 Supervisor 合约**: Always create agents with `create_react_agent` and expose them via `build_<role>_agent()` functions. Avoid changing function signatures unless updating all call sites. / 代理需使用 `create_react_agent` 构建，并以 `build_<role>_agent()` 暴露，如需改动签名需同步所有调用方。
+2. **State Discipline** / **状态管理约束**: Pass structured dictionaries only; avoid free-form text except final `summarizer_agent` payload. Use `messages` history sparingly to keep `output_mode="last_message"` lightweight. / 仅传递结构化字典，除最终输出外避免自由文本，控制 `messages` 数量以保持轻量。
+3. **Tool Hygiene** / **工具使用规范**: Tools must validate inputs, handle retries (max 3 with exponential backoff), and cap payload sizes (e.g., ≤3 photos). / 工具需校验输入、支持最多 3 次指数退避重试，并限制返回规模（如照片 ≤3）。
+4. **Error Surfacing** / **错误处理**: Bubble up external API failures via structured error fields rather than raising unhandled exceptions; supervisor should decide fallback. / 外部 API 失败通过结构化错误字段反馈，由监督者决定降级策略。
+5. **Language Consistency** / **语言一致性**: Agents respond in user language when returning natural-language fields. / 返回自然语言内容时保持与用户语言一致。
+6. **Documentation** / **文档义务**: Update this guide and relevant READMEs when adding modules or changing workflows. / 新增模块或调整流程需同步更新本指南及相关 README。
+7. **AI Agent Contributions** / **AI 协作者注意**: Cite source files in summaries, avoid speculative claims, and do not alter credentials or large binaries. / 生成式 Agent 在总结时需引用来源，禁止臆测，不得修改凭据或大型二进制。
+
+---
+
+## 7. Coding Style & Quality Gates / 代码风格与质量要求
+
+- **Formatting**: `ruff format` (line length 100, `E501` ignored). / 使用 `ruff format`，行长 100（忽略 `E501`）。
+- **Linting**: `ruff check` with rules `E`, `W`, `F`, `I`, `B`. / `ruff check` 启用 `E/W/F/I/B` 规则。
+- **Static typing**: `mypy` enforces typed defs (`disallow_untyped_defs = true`). / `mypy` 强制函数类型注解。
+- **Type checker (`uvx ty check`)**: respects overrides in `tool.ty.rules`. / `uvx ty check` 依据 `tool.ty.rules` 的豁免。
+- **Python conventions**: modules in `snake_case`, classes `PascalCase`, functions `snake_case` with imperative verbs; maintain docstrings for public APIs. / Python 命名：模块 `snake_case`，类 `PascalCase`，函数动词开头的 `snake_case`，公共 API 需 docstring。
+- **Imports**: standard → third-party → local; no wildcard imports; avoid wrapping imports in try/except. / 导入顺序为标准库→第三方→本地，禁止通配符与 try/except 包裹导入。
+- **Testing**: add pytest cases for new tools/agents; isolate network calls via fixtures or environment guards. / 新增工具/代理需补充 pytest，网络调用需通过 fixture 或环境开关隔离。
+
+---
+
+## 8. FAQs, Notes, Limitations / 常见问题与限制
+
+- **Missing API keys?** Tools raise `RuntimeError` with clear messaging; tests may skip gracefully. / 缺少 API Key 时工具会抛出带提示的 `RuntimeError`，测试会优雅跳过。
+- **Neo4j/Pinecone availability**: `RAG.py` will initialize indices; ensure service quotas before running integration tests. / `RAG.py` 会尝试初始化索引，运行集成测试前请确认服务配额。
+- **Google Places quotas**: Photo fetches limited to 3 per place at 640×480; adjust constants responsibly. / Google Places 照片默认 3 张、640×480，修改需评估配额消耗。
+- **Frontend/backed sync**: `summarizer_agent` JSON schema (`cards` array, `rationale` string) underpins UI; coordinate changes with frontend maintainers. / `summarizer_agent` 的 JSON 模式决定前端展示，变更需与前端同步。
+- **Threading**: Supervisor compiles with `parallel_tool_calls=False`; enabling parallelization requires verifying agent/tool idempotency. / Supervisor 当前禁用并行工具调用，若需开启需确认代理与工具的幂等性。
+- **Testing external notebooks**: `CallAPIs/` notebooks are exploratory and not part of automated tests; keep outputs cleared. / `CallAPIs/` Notebook 仅用于探索，不纳入自动化测试，提交前请清除输出。
+
+---
+
+## 9. Maintenance Notes / 维护记录
+
+- **2025-10-14**: Repository-wide `AGENTS.md` rewritten to reflect current `whats_eat` layout, tooling, and quality bars; supersedes prior guidance referencing `users/whatseat`. / 2025-10-14：重写 `AGENTS.md`，更新为现有 `whats_eat` 结构与规范，取代旧版 `apps/whatseat` 相关指引。
+- Keep this section chronological; include author, summary, and impacted areas for future edits. / 后续修改请按时间顺序记录，写明作者、摘要与影响范围。
+
+---
+
+> Stay aligned with this guide to ensure cohesive evolution of the WhatsEat supervisor ecosystem. / 请遵循本指南，确保 WhatsEat Supervisor 生态持续一致地演进。

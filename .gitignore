@@ -19,6 +19,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/src/lib/
+!frontend/src/lib/**
 lib64/
 parts/
 sdist/
@@ -33,6 +35,8 @@ MANIFEST
 # Environments
 .venv
 .env
+.env.json
+*.env.json
 
 # mypy
 .mypy_cache/
@@ -42,3 +46,13 @@ dmypy.json
 .vscode
 .idea
 .langgraph_api
+
+#frontend
+frontend/node_modules/
+# Sensitive files - API keys and credentials
+whats_eat/configuration/client_secret.json
+users/whatseat/data/tokens/
+whats_eat/client_secret.json
+whats_eat/configuration/client_secret.json
+whats_eat/Neo4j*.txt
+Neo4j*.txt

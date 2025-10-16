@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ChIJOa08KlqnlVQR_ZZx1jEcTYY",
+    "formattedAddress": "3808 N Williams Ave #127, Portland, OR 97227, USA",
+    "location": {
+      "latitude": 45.5506551,
+      "longitude": -122.66652119999998
+    },
+    "displayName": {
+      "text": "Eem - Thai BBQ & Cocktails",
+      "languageCode": "en"
+    }
+  },
+  {
+    "id": "ChIJU4OzoWynlVQRxlQMpGenSvA",
+    "formattedAddress": "4237 N Mississippi Ave, Portland, OR 97217, USA",
+    "location": {
+      "latitude": 45.554515699999996,
+      "longitude": -122.67573579999998
+    },
+    "displayName": {
+      "text": "Prost!",
+      "languageCode": "en"
+    }
+  },
+  {
+    "id": "ChIJIxfmG0KnlVQR3ZPSgF46ahE",
+    "formattedAddress": "3524 N Mississippi Ave, Portland, OR 97227, USA",
+    "location": {
+      "latitude": 45.5481556,
+      "longitude": -122.67532539999998
+    },
+    "displayName": {
+      "text": "¿Por Qué No?",
+      "languageCode": "en"
+    }
+  },
+  {
+    "id": "ChIJeaQuoUeFhVQR5k_yPdK_gvk",
+    "formattedAddress": "3925 NE Martin Luther King Jr Blvd, Portland, OR 97212, USA",
+    "location": {
+      "latitude": 45.551158099999995,
+      "longitude": -122.66191149999999
+    },
+    "displayName": {
+      "text": "Cafe Olli",
+      "languageCode": "en"
+    }
+  },
+  {
+    "id": "ChIJL9S2VWmnlVQRUhyawDjpzjY",
+    "formattedAddress": "4024 N Interstate Ave, Portland, OR 97227, USA",
+    "location": {
+      "latitude": 45.552537,
+      "longitude": -122.68068699999999
+    },
+    "displayName": {
+      "text": "The Alibi Tiki Lounge",
+      "languageCode": "en"
+    }
+  }
+]
