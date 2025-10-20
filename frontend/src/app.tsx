@@ -35,8 +35,8 @@ function App(): JSX.Element {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <Header />
-      <main className="flex flex-1 justify-center px-4 py-8">
-        <div className="flex w-full max-w-5xl flex-col gap-6">
+      <main className="flex flex-1 justify-center px-4 pb-6 pt-8">
+        <div className="flex w-full max-w-5xl flex-1 flex-col gap-6 min-h-0">
           {/*/!* 位置获取组件 *!/*/}
           {/*<div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">*/}
           {/*  <div className="flex items-start justify-between gap-4">*/}
@@ -51,7 +51,9 @@ function App(): JSX.Element {
           {/*</div>*/}
 
           {/* 聊天面板 */}
-          <ChatPanel {...chat} userLocation={location.coordinates} location={location} />
+          <div className="flex flex-1 min-h-0">
+            <ChatPanel {...chat} userLocation={location.coordinates} location={location} />
+          </div>
         </div>
       </main>
     </div>

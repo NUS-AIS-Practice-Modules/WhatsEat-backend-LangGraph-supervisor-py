@@ -133,7 +133,7 @@ export function ChatPanel({
   }, [location, userLocation]);
 
   return (
-    <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white shadow-lg">
+    <section className="flex flex-1 min-h-0 flex-col gap-4 rounded-lg border border-slate-200 bg-white shadow-lg">
       <div className="flex flex-col gap-3 px-6 pt-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-brand">Culinary discovery assistant</h1>
@@ -143,7 +143,7 @@ export function ChatPanel({
           Ask for nearby restaurants, request personalized picks, or explore summaries from the multi-agent workflow.
         </p>
       </div>
-      <div className="flex-1 overflow-hidden px-2">
+      <div className="flex-1 min-h-0 overflow-hidden px-2">
         <ChatTranscript
           messages={messages}
           isStreaming={isStreaming}
