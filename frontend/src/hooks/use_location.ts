@@ -4,7 +4,7 @@ export interface LocationCoordinates {
   latitude: number;
   longitude: number;
   accuracy?: number;
-  source?: 'browser' | 'address'; // 定位来源：浏览器定位或地址输入
+  source?: 'browser' | 'address'; // Source of location: browser geolocation or address input
 }
 
 export interface LocationState {
@@ -22,7 +22,7 @@ export interface LocationController extends LocationState {
 }
 
 /**
- * 自定义 Hook 用于获取用户的地理位置
+ * Custom hook to fetch the user's geolocation
  */
 export function useLocation(): LocationController {
   const [coordinates, setCoordinates] = useState<LocationCoordinates | null>(null);
@@ -30,15 +30,15 @@ export function useLocation(): LocationController {
   const [error, setError] = useState<string | null>(null);
   const [isSupported, setIsSupported] = useState(false);
 
-  // 检查浏览器是否支持地理定位
+  // Check whether the browser supports geolocation
   useEffect(() => {
     setIsSupported("geolocation" in navigator);
   }, []);
 
-  // 请求获取用户位置
+  // Request the user's location
   const requestLocation = useCallback(async () => {
     if (!navigator.geolocation) {
-      setError("您的浏览器不支持地理定位功能");
+      setError("Your browser does not support geolocation");
       return;
     }
 
@@ -51,9 +51,9 @@ export function useLocation(): LocationController {
           resolve,
           reject,
           {
-            enableHighAccuracy: true, // 启用高精度
-            timeout: 10000, // 10秒超时
-            maximumAge: 0, // 不使用缓存的位置
+            enableHighAccuracy: true, // Enable high accuracy
+            timeout: 10000, // 10s timeout
+            maximumAge: 0, // Do not use cached position
           }
         );
       });
@@ -66,48 +66,48 @@ export function useLocation(): LocationController {
       };
 
       setCoordinates(newCoordinates);
-      console.log("位置获取成功:", newCoordinates);
+      console.log("Location acquired successfully:", newCoordinates);
     } catch (err) {
-      let errorMessage = "无法获取您的位置";
+      let errorMessage = "Unable to get your location";
 
       if (err instanceof GeolocationPositionError) {
         switch (err.code) {
           case err.PERMISSION_DENIED:
-            errorMessage = "您拒绝了位置权限请求，请在浏览器设置中允许位置访问";
+            errorMessage = "Location permission denied. Please allow location access in browser settings.";
             break;
           case err.POSITION_UNAVAILABLE:
-            errorMessage = "位置信息暂时不可用，请稍后再试";
+            errorMessage = "Location information is currently unavailable. Please try again later.";
             break;
           case err.TIMEOUT:
-            errorMessage = "获取位置超时，请检查网络连接后重试";
+            errorMessage = "Getting location timed out. Please check your network connection and retry.";
             break;
         }
       }
 
       setError(errorMessage);
-      console.error("位置获取失败:", err);
+      console.error("Failed to acquire location:", err);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // 清除位置信息
+  // Clear location
   const clearLocation = useCallback(() => {
     setCoordinates(null);
     setError(null);
   }, []);
 
-  // 手动设置坐标
+  // Manually set coordinates
   const setCoordinatesManually = useCallback((coords: LocationCoordinates) => {
     setCoordinates(coords);
     setError(null);
-    console.log("手动设置位置:", coords);
+    console.log("Manually set location:", coords);
   }, []);
 
-  // 通过地址/邮编获取坐标
+  // Get coordinates by address/postcode
   const setCoordinatesFromAddress = useCallback(async (address: string): Promise<LocationCoordinates | null> => {
     if (!address.trim()) {
-      setError("请输入有效的地址或邮编");
+      setError("Please enter a valid address or postal code");
       return null;
     }
 
@@ -115,10 +115,10 @@ export function useLocation(): LocationController {
     setError(null);
 
     try {
-      // 使用 Google Geocoding API
+      // Use Google Geocoding API
       const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
       if (!apiKey) {
-        throw new Error("未配置 Google Maps API 密钥，请联系管理员或在环境变量中设置 REACT_APP_GOOGLE_MAPS_API_KEY");
+        throw new Error("Google Maps API key is not configured. Set REACT_APP_GOOGLE_MAPS_API_KEY in env or contact admin.");
       }
 
       const response = await fetch(
@@ -126,13 +126,13 @@ export function useLocation(): LocationController {
       );
       
       if (!response.ok) {
-        throw new Error("地理编码请求失败");
+        throw new Error("Geocoding request failed");
       }
 
       const data = await response.json();
       
       if (data.status !== "OK" || !data.results || data.results.length === 0) {
-        throw new Error("无法找到该地址对应的位置，请检查地址或邮编是否正确");
+        throw new Error("Could not find a location for that address. Please check the address or postal code.");
       }
 
       const location = data.results[0].geometry.location;
@@ -143,15 +143,15 @@ export function useLocation(): LocationController {
       };
 
       setCoordinates(newCoordinates);
-      console.log("通过地址获取位置成功:", newCoordinates, "地址:", data.results[0].formatted_address);
+      console.log("Location from address success:", newCoordinates, "address:", data.results[0].formatted_address);
       return newCoordinates;
     } catch (err) {
-      let errorMessage = "无法获取位置信息";
+      let errorMessage = "Unable to fetch location information";
       if (err instanceof Error) {
         errorMessage = err.message;
       }
       setError(errorMessage);
-      console.error("地址转换失败:", err);
+      console.error("Address to coordinates failed:", err);
       return null;
     } finally {
       setIsLoading(false);
@@ -169,4 +169,3 @@ export function useLocation(): LocationController {
     setCoordinatesManually,
   };
 }
-

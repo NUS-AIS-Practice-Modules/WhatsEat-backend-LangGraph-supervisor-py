@@ -459,7 +459,7 @@ def main():
     
     # Save report
     report_dir = Path(__file__).parent / "test_reports"
-    # 修改为 tests/test_reports 子文件夹
+    # Change to tests/test_reports subfolder
     report_dir = Path(__file__).parent / "tests" / "test_reports"
     report_dir.mkdir(parents=True, exist_ok=True)
 

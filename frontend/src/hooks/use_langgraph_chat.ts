@@ -430,7 +430,7 @@ export function useLanggraphChat(): ChatController {
       // 如果提供了位置信息，将其附加到消息内容中
       let enrichedContent = content;
       if (location) {
-        enrichedContent = `${content}\n\n[用户位置信息: 纬度 ${location.latitude}, 经度 ${location.longitude}]`;
+        enrichedContent = `${content}\n\n[User location information: latitude ${location.latitude}, longitude ${location.longitude}]`;
       }
 
       const optimisticMessage: ChatMessage = {

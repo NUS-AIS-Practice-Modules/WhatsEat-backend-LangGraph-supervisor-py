@@ -37,20 +37,20 @@ function App(): JSX.Element {
       <Header />
       <main className="flex flex-1 justify-center px-4 py-8">
         <div className="flex w-full max-w-5xl flex-col gap-6">
-          {/*/!* 位置获取组件 *!/*/}
+          {/*/!* Location acquisition component *!/*/}
           {/*<div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">*/}
           {/*  <div className="flex items-start justify-between gap-4">*/}
           {/*    <div className="flex-1">*/}
-          {/*      <h2 className="text-sm font-semibold text-slate-700 mb-1">📍 位置服务</h2>*/}
+          {/*      <h2 className="text-sm font-semibold text-slate-700 mb-1">📍 Location Service</h2>*/}
           {/*      <p className="text-xs text-slate-500">*/}
-          {/*        授权获取您的位置信息，以便为您推荐附近的餐厅*/}
+          {/*        Authorize access to your location to recommend nearby restaurants*/}
           {/*      </p>*/}
           {/*    </div>*/}
           {/*    <LocationButton location={location} />*/}
           {/*  </div>*/}
           {/*</div>*/}
 
-          {/* 聊天面板 */}
+          {/* Chat panel */}
           <ChatPanel {...chat} userLocation={location.coordinates} location={location} />
         </div>
       </main>
