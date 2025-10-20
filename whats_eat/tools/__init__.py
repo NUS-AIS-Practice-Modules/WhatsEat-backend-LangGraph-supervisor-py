@@ -1,7 +1,8 @@
 from .google_places import places_text_search, places_fetch_photos, places_coordinate_search, place_geocode
 from .user_profile import embed_user_preferences, yt_list_liked_videos, yt_list_subscriptions
-from .route_map import route_build_map_html
-from .ranking import rank_restaurants_by_profile
+# from .route_map import route_build_map_html
+from .ranking import rank_restaurants_by_profile, filter_by_attributes
+from .RAG import process_places_data,query_similar_places_tool
 __all__ = [
     "place_geocode",
     "places_coordinate_search",
@@ -9,7 +10,10 @@ __all__ = [
     "places_fetch_photos",
     "yt_list_subscriptions",
     "yt_list_liked_videos",
-    "route_build_map_html",
+    # "route_build_map_html",
     "embed_user_preferences",
     "rank_restaurants_by_profile",
+    "filter_by_attributes",
+    "process_places_data",
+    "query_similar_places_tool"
 ]

@@ -350,5 +350,3 @@ def filter_by_attributes(
         "filters_applied": required_attributes
     }
 
-
-__all__ = ["rank_restaurants_by_profile", "filter_by_attributes"]
