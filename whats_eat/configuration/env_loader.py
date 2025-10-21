@@ -40,7 +40,7 @@ def _load_dotenv(path: Path = None, override: bool = True) -> None:
     if path is not None and path.exists():
         load_dotenv(dotenv_path=str(path), override=override)
     else:
-        # 自动查找当前目录及父目录中的 .env 文件
+        # Automatically search for a .env file in the current and parent directories
         found = False
         search_path = Path(os.getcwd())
         for parent in [search_path] + list(search_path.parents):

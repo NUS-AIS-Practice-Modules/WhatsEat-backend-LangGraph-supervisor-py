@@ -6,17 +6,17 @@ interface LocationButtonProps {
 }
 
 /**
- * 位置按钮组件，显示位置状态并提供获取位置的功能
+ * Location button component: displays location status and provides a way to fetch location
  */
 export function LocationButton({ location }: LocationButtonProps) {
   const { coordinates, isLoading, error, isSupported, requestLocation, clearLocation } = location;
 
   const handleLocationClick = useCallback(async () => {
     if (coordinates) {
-      // 如果已经有位置信息，清除它
+      // If location already exists, clear it
       clearLocation();
     } else {
-      // 否则请求获取位置
+      // Otherwise, request location
       await requestLocation();
     }
   }, [coordinates, clearLocation, requestLocation]);
@@ -25,7 +25,7 @@ export function LocationButton({ location }: LocationButtonProps) {
     return (
       <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-500">
         <span>🚫</span>
-        <span>您的浏览器不支持定位</span>
+        <span>Your browser does not support geolocation</span>
       </div>
     );
   }
@@ -47,12 +47,12 @@ export function LocationButton({ location }: LocationButtonProps) {
         {isLoading ? (
           <>
             <span className="animate-spin">⏳</span>
-            <span>正在获取位置...</span>
+            <span>Getting location...</span>
           </>
         ) : coordinates ? (
           <>
             <span>✅</span>
-            <span>已定位</span>
+            <span>Located</span>
             <span className="text-xs text-green-600">
               ({coordinates.latitude.toFixed(4)}, {coordinates.longitude.toFixed(4)})
             </span>
@@ -60,7 +60,7 @@ export function LocationButton({ location }: LocationButtonProps) {
         ) : (
           <>
             <span>📍</span>
-            <span>点击获取当前位置</span>
+            <span>Click to get current location</span>
           </>
         )}
       </button>
@@ -74,14 +74,13 @@ export function LocationButton({ location }: LocationButtonProps) {
 
       {coordinates && (
         <div className="text-xs text-slate-500">
-          <div>纬度: {coordinates.latitude}</div>
-          <div>经度: {coordinates.longitude}</div>
+          <div>Latitude: {coordinates.latitude}</div>
+          <div>Longitude: {coordinates.longitude}</div>
           {coordinates.accuracy && (
-            <div>精度: ±{coordinates.accuracy.toFixed(0)}米</div>
+            <div>Accuracy: ±{coordinates.accuracy.toFixed(0)} m</div>
           )}
         </div>
       )}
     </div>
   );
 }
-

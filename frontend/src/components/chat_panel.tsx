@@ -84,15 +84,15 @@ export function ChatPanel({
         const addressToGeocode = extractAddressFromMessage(message);
         
         if (addressToGeocode) {
-          console.log("检测到地址信息，正在获取坐标:", addressToGeocode);
+          console.log("Address information detected, obtaining coordinates:", addressToGeocode);
           try {
             const coordinates = await location.setCoordinatesFromAddress(addressToGeocode);
             if (coordinates) {
               locationToUse = coordinates;
-              console.log("成功获取坐标:", locationToUse);
+              console.log("Successfully obtained coordinates:", locationToUse);
             }
           } catch (err) {
-            console.warn("自动地址识别失败，继续发送消息:", err);
+            console.warn("Automatic address recognition failed, continue sending message:", err);
           }
         }
       }
@@ -170,18 +170,18 @@ export function ChatPanel({
           userLocation.source === 'browser' ? (
             <div className="flex items-center gap-2 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
               <span>✅</span>
-              <span>已通过浏览器定位获取位置 — 将使用您的当前位置进行附近搜索</span>
+              <span>Location obtained through browser location - Your current location will be used for nearby searches</span>
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
               <span>📍</span>
-              <span>已通过地址设置位置 — 将使用该位置进行附近搜索</span>
+              <span>Location set via address — this will be used for nearby searches</span>
             </div>
           )
         ) : (
           <div className="flex items-center gap-2 rounded border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700">
             <span>💡</span>
-            <span>提示：您可以在消息中输入地址或邮编（如 "near 238801" 或 "在 Marina Bay"），系统会自动识别并使用该位置</span>
+            <span>Tip: You can enter an address or postal code in your message (e.g. "near 238801" or "in Marina Bay") and the system will automatically recognize and use that location.</span>
           </div>
         )}
 

@@ -1,464 +1,99 @@
-# 🤖 LangGraph Multi-Agent Supervisor
+# 🤖 WhatsEat LangGraph Supervisor
 
-A Python library for creating hierarchical multi-agent systems using [LangGraph](https://github.com/langchain-ai/langgraph). Hierarchical systems are a type of [multi-agent](https://langchain-ai.github.io/langgraph/concepts/multi_agent) architecture where specialized agents are coordinated by a central **supervisor** agent. The supervisor controls all communication flow and task delegation, making decisions about which agent to invoke based on the current context and task requirements.
+WhatsEat is a LangGraph-based multi-agent backend that plans and executes a full restaurant discovery pipeline.
+A supervisor graph coordinates specialized agents that talk to Google Maps, YouTube, Neo4j, Pinecone, and OpenAI
+tools before handing the final payload to the UI. The repository also packages the generic `create_supervisor`
+helpers so you can build your own managed agent teams on top of LangGraph.
 
-## Features
+![Supervisor Architecture](static/img/supervisor.png)
 
-- 🤖 **Create a supervisor agent** to orchestrate multiple specialized agents
-- 🛠️ **Tool-based agent handoff mechanism** for communication between agents
-- 📝 **Flexible message history management** for conversation control
-- 🖥️ **Generative UI frontend scaffold** built with React + LangGraph SDK for interactive demos
+## Key capabilities
 
-This library is built on top of [LangGraph](https://github.com/langchain-ai/langgraph), a powerful framework for building agent applications, and comes with out-of-box support for [streaming](https://langchain-ai.github.io/langgraph/how-tos/#streaming), [short-term and long-term memory](https://langchain-ai.github.io/langgraph/concepts/memory/) and [human-in-the-loop](https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/)
+- **Orchestrated agent workflow** – `build_app()` assembles Places search, YouTube profile, RAG recommender, and
+  summarizer agents, then compiles them into the LangGraph application exported through `langgraph.json` for
+  LangGraph Server or CLI usage.
+- **Reusable supervisor tooling** – The `whats_eat.langgraph_supervisor` package extends LangGraph’s prebuilt
+  supervisor with opinionated handoff tools, agent-name exposure, and configurable output modes, and can be used in
+  your own projects via a normal Python import.【
+- **Rich restaurant data ingest** – Places tools wrap Google’s REST APIs with retry/backoff, geocoding, and inline
+  photo resolution so every card arrives with lat/lng, metadata, and HTTPS photo URLs.
+- **Taste-aware recommendations** – A RAG+ranking agent builds a knowledge graph in Neo4j, pushes embeddings to
+  Pinecone, and scores restaurants against the user’s embedding profile before the summarizer produces UI-ready JSON.
+
+## Repository layout
+
+| Path | Description |
+| --- | --- |
+| `whats_eat/app/` | LangGraph entrypoints (`build_app`, compiled `app`) consumed by LangGraph Server and the CLI. 
+| `whats_eat/agents/` | REACT-style agents for Places, YouTube profile, RAG recommender, summarizer, routing, and RAG experiments. 
+| `whats_eat/tools/` | Stateless tools (Google Places, user profile, ranking, route maps, RAG integrations).
+| `whats_eat/configuration/` | Environment loader, config helpers, OAuth bootstrap for Google APIs. 
+| `tests/` | Pytest coverage for the supervisor core, agent naming utilities, RAG tools, and reporting helpers.
+| `examples/` | Sample place, profile, and summarizer payloads for manual testing of the pipeline.
+| `static/` | Architecture diagrams referenced by the documentation.
+## Multi-agent architecture
+
+1. **Parallel discovery** – The supervisor first dispatches `places_agent` and `user_profile_agent` in a single
+   parallel tool call. Places returns ≥10 candidates with normalized coordinates and photos; the profile agent
+   synthesizes cuisine keywords plus a single embedding vector from YouTube subscriptions and likes.
+2. **Retrieval-augmented ranking** – Their outputs are paired as `(json1, json2)` and forwarded to
+   `rag_recommender_agent`, which writes the data to Neo4j, indexes embeddings in Pinecone, optionally filters by
+   hard constraints, and scores the top restaurants across similarity, rating, attribute fit, and distance.
+3. **Presentation** – The summarizer agent converts the ranked list into `{ "cards": [...], "rationale": "..." }`
+   with structured photo arrays that the Generative UI can render directly.
+4. **Optional handoffs** – Built-in forward tools let the supervisor echo an agent’s raw reply back to the user when
+   troubleshooting, while all transfers are tracked for observability.
+
+## Requirements
+
+- Python **3.11+** (tooling pins to `>=3.11` in `pyproject.toml`).
+- Access to external services depending on the agents you enable:
+  - `OPENAI_API_KEY` for chat/embedding models (supervisor, profile embedding, RAG ingest).
+  - `GOOGLE_MAPS_API_KEY` for Places and Geocoding tools.
+  - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` plus `PINECONE_*` keys for the RAG recommender (optional if you skip that agent).
+  - Optional `YOUTUBE_API_KEY` and OAuth credentials if you want live YouTube scraping via the profile tools.
+
+The environment loader automatically prefers a repository-level `.env.json` before falling back to `.env`, so you can
+commit secrets-free templates and load local overrides.
 
 ## Installation
 
 ```bash
-pip install langgraph-supervisor
+pip install uv  # optional, for dependency management
+uv sync          # or: pip install -r requirements.txt
 ```
 
-> [!Note]
-> LangGraph Supervisor requires Python >= 3.10
+> Tip: The project ships an `uv.lock` file for reproducible environments.
 
-## Quickstart
+## Running the supervisor locally
 
-Here's a simple example of a supervisor managing two specialized agents:
-
-![Supervisor Architecture](static/img/supervisor.png)
-
-```bash
-pip install langgraph-supervisor langchain-openai
-
-export OPENAI_API_KEY=<your_api_key>
-```
-
-```python
-from langchain_openai import ChatOpenAI
-
-from whats_eat import create_supervisor
-from langgraph.prebuilt import create_react_agent
-
-model = ChatOpenAI(model="gpt-4o")
-
-
-# Create specialized agents
-
-def add(a: float, b: float) -> float:
-    """Add two numbers."""
-    return a + b
-
-
-def multiply(a: float, b: float) -> float:
-    """Multiply two numbers."""
-    return a * b
-
-
-def web_search(query: str) -> str:
-    """Search the web for information."""
-    return (
-        "Here are the headcounts for each of the FAANG companies in 2024:\n"
-        "1. **Facebook (Meta)**: 67,317 employees.\n"
-        "2. **Apple**: 164,000 employees.\n"
-        "3. **Amazon**: 1,551,000 employees.\n"
-        "4. **Netflix**: 14,000 employees.\n"
-        "5. **Google (Alphabet)**: 181,269 employees."
-    )
-
-
-math_agent = create_react_agent(
-    model=model,
-    tools=[add, multiply],
-    name="math_expert",
-    prompt="You are a math expert. Always use one tool at a time."
-)
-
-research_agent = create_react_agent(
-    model=model,
-    tools=[web_search],
-    name="research_expert",
-    prompt="You are a world class researcher with access to web search. Do not do any math."
-)
-
-# Create supervisor workflow
-workflow = create_supervisor(
-    [research_agent, math_agent],
-    model=model,
-    prompt=(
-        "You are a team supervisor managing a research expert and a math expert. "
-        "For current events, use research_agent. "
-        "For math problems, use math_agent."
-    )
-)
-
-# Compile and run
-app = workflow.compile()
-result = app.invoke({
-    "messages": [
-        {
-            "role": "user",
-            "content": "what's the combined headcount of the FAANG companies in 2024?"
-        }
-    ]
-})
-```
-
-## Run the WhatsEat demo locally
-
-The repository also contains the WhatsEat supervisor workflow and a matching React UI. Follow the steps below to launch the
-LangGraph backend together with the frontend against it.
-
-### 1. Install backend dependencies
-
-```bash
-pip install uv  # skip if you already have uv installed
-uv sync         # creates .venv/ with the packages from pyproject.toml
-```
-
-Copy the sample environment file and provide your credentials:
-
-```bash
-cp .env.example .env
-```
-
-At minimum you need:
-
-- `OPENAI_API_KEY` for the `init_chat_model("openai:gpt-5-mini")` call used by the supervisor.
-- `GOOGLE_MAPS_API_KEY` so the Places and route tools can call the Google APIs.
-
-### 2. Start the LangGraph backend
-
-```bash
-uv run langgraph dev
-```
-
-The CLI reads `langgraph.json`, compiles the `agent` graph from `whats_eat/app/run.py`, and serves it at
-`http://localhost:2024` by default (pass `--port` if you need to override it).
-
-> [!TIP]
-> The bundled `langgraph.json` already points at the WhatsEat app entrypoint, so you can run the command without editing the file.
-
-### 3. Install and start the frontend
-
-```bash
-cd frontend
-pnpm install         # or npm/yarn
-cp .env.example .env # points the React app to http://localhost:2024 by default
-pnpm start
-```
-
-Open `http://localhost:3000` to interact with the WhatsEat supervisor UI. Update the environment variables if your backend runs on a different host or port.
-
-## Message History Management
-
-You can control how messages from worker agents are added to the overall conversation history of the multi-agent system:
-
-Include full message history from an agent:
-
-![Full History](static/img/full_history.png)
-
-```python
-workflow = create_supervisor(
-    agents=[agent1, agent2],
-    output_mode="full_history"
-)
-```
-
-Include only the final agent response:
-
-![Last Message](static/img/last_message.png)
-
-```python
-workflow = create_supervisor(
-    agents=[agent1, agent2],
-    output_mode="last_message"
-)
-```
-
-## Multi-level Hierarchies
-
-You can create multi-level hierarchical systems by creating a supervisor that manages multiple supervisors.
-
-```python
-research_team = create_supervisor(
-    [research_agent, math_agent],
-    model=model,
-    supervisor_name="research_supervisor"
-).compile(name="research_team")
-
-writing_team = create_supervisor(
-    [writing_agent, publishing_agent],
-    model=model,
-    supervisor_name="writing_supervisor"
-).compile(name="writing_team")
-
-top_level_supervisor = create_supervisor(
-    [research_team, writing_team],
-    model=model,
-    supervisor_name="top_level_supervisor"
-).compile(name="top_level_supervisor")
-```
-
-## Adding Memory
-
-You can add [short-term](https://langchain-ai.github.io/langgraph/how-tos/persistence/) and [long-term](https://langchain-ai.github.io/langgraph/how-tos/cross-thread-persistence/) [memory](https://langchain-ai.github.io/langgraph/concepts/memory/) to your supervisor multi-agent system. Since `create_supervisor()` returns an instance of `StateGraph` that needs to be compiled before use, you can directly pass a [checkpointer](https://langchain-ai.github.io/langgraph/reference/checkpoints/#langgraph.checkpoint.base.BaseCheckpointSaver) or a [store](https://langchain-ai.github.io/langgraph/reference/store/#langgraph.store.base.BaseStore) instance to the `.compile()` method:
-
-```python
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.store.memory import InMemoryStore
-
-checkpointer = InMemorySaver()
-store = InMemoryStore()
-
-model = ...
-research_agent = ...
-math_agent = ...
-
-workflow = create_supervisor(
-    [research_agent, math_agent],
-    model=model,
-    prompt="You are a team supervisor managing a research expert and a math expert.",
-)
-
-# Compile with checkpointer/store
-app = workflow.compile(
-    checkpointer=checkpointer,
-    store=store
-)
-```
-
-## How to customize
-
-### Customizing handoff tools
-
-By default, the supervisor uses handoff tools created with the prebuilt `create_handoff_tool`. You can also create your own, custom handoff tools. Here are some ideas on how you can modify the default implementation:
-
-* change tool name and/or description
-* add tool call arguments for the LLM to populate, for example a task description for the next agent
-* change what data is passed to the subagent as part of the handoff: by default `create_handoff_tool` passes **full** message history (all of the messages generated in the supervisor up to this point), as well as a tool message indicating successful handoff.
-
-Here is an example of how to pass customized handoff tools to `create_supervisor`:
-
-```python
-from whats_eat import create_handoff_tool
-
-workflow = create_supervisor(
-    [research_agent, math_agent],
-    tools=[
-        create_handoff_tool(agent_name="math_expert", name="assign_to_math_expert",
-                            description="Assign task to math expert"),
-        create_handoff_tool(agent_name="research_expert", name="assign_to_research_expert",
-                            description="Assign task to research expert")
-    ],
-    model=model,
-)
-```
-
-You can also control whether the handoff tool invocation messages are added to the state. By default, they are added (`add_handoff_messages=True`), but you can disable this if you want a more concise history:
-
-```python
-workflow = create_supervisor(
-    [research_agent, math_agent],
-    model=model,
-    add_handoff_messages=False
-)
-```
-
-Additionally, you can customize the prefix used for the automatically generated handoff tools:
-
-```python
-workflow = create_supervisor(
-    [research_agent, math_agent],
-    model=model,
-    handoff_tool_prefix="delegate_to"
-)
-# This will create tools named: delegate_to_research_expert, delegate_to_math_expert
-```
-
-Here is an example of what a custom handoff tool might look like:
-
-```python
-from typing import Annotated
-
-from langchain_core.tools import tool, BaseTool, InjectedToolCallId
-from langchain_core.messages import ToolMessage
-from langgraph.types import Command
-from langgraph.prebuilt import InjectedState
-from whats_eat import METADATA_KEY_HANDOFF_DESTINATION
-
-
-def create_custom_handoff_tool(*, agent_name: str, name: str | None, description: str | None) -> BaseTool:
-    @tool(name, description=description)
-    def handoff_to_agent(
-            # you can add additional tool call arguments for the LLM to populate
-            # for example, you can ask the LLM to populate a task description for the next agent
-            task_description: Annotated[
-                str, "Detailed description of what the next agent should do, including all of the relevant context."],
-            # you can inject the state of the agent that is calling the tool
-            state: Annotated[dict, InjectedState],
-            tool_call_id: Annotated[str, InjectedToolCallId],
-    ):
-        tool_message = ToolMessage(
-            content=f"Successfully transferred to {agent_name}",
-            name=name,
-            tool_call_id=tool_call_id,
-        )
-        messages = state["messages"]
-        return Command(
-            goto=agent_name,
-            graph=Command.PARENT,
-            # NOTE: this is a state update that will be applied to the swarm multi-agent graph (i.e., the PARENT graph)
-            update={
-                "messages": messages + [tool_message],
-                "active_agent": agent_name,
-                # optionally pass the task description to the next agent
-                # NOTE: individual agents would need to have `task_description` in their state schema
-                # and would need to implement logic for how to consume it
-                "task_description": task_description,
-            },
-        )
-
-    handoff_to_agent.metadata = {METADATA_KEY_HANDOFF_DESTINATION: agent_name}
-    return handoff_to_agent
-```
-
-### Message Forwarding
-
-You can equip the supervisor with a tool to directly forward the last message received from a worker agent straight to the final output of the graph using `create_forward_message_tool`. This is useful when the supervisor determines that the worker's response is sufficient and doesn't require further processing or summarization by the supervisor itself. It saves tokens for the supervisor and avoids potential misrepresentation of the worker's response through paraphrasing.
-
-```python
-from whats_eat import create_forward_message_tool
-
-# Assume research_agent and math_agent are defined as before
-
-forwarding_tool = create_forward_message_tool(
-    "supervisor")  # The argument is the name to assign to the resulting forwarded message
-workflow = create_supervisor(
-    [research_agent, math_agent],
-    model=model,
-    # Pass the forwarding tool along with any other custom or default handoff tools
-    tools=[forwarding_tool]
-)
-```
-
-This creates a tool named `forward_message` that the supervisor can invoke. The tool expects an argument `from_agent` specifying which agent's last message should be forwarded directly to the output.
-
-## Using Functional API 
-
-Here's a simple example of a supervisor managing two specialized agentic workflows created using Functional API:
-
-```bash
-pip install langgraph-supervisor langchain-openai
-
-export OPENAI_API_KEY=<your_api_key>
-```
-
-```python
-from langgraph.prebuilt import create_react_agent
-from whats_eat import create_supervisor
-
-from langchain_openai import ChatOpenAI
-
-from langgraph.func import entrypoint, task
-from langgraph.graph import add_messages
-
-model = ChatOpenAI(model="gpt-4o")
-
-
-# Create specialized agents
-
-# Functional API - Agent 1 (Joke Generator)
-@task
-def generate_joke(messages):
-    """First LLM call to generate initial joke"""
-    system_message = {
-        "role": "system",
-        "content": "Write a short joke"
-    }
-    msg = model.invoke(
-        [system_message] + messages
-    )
-    return msg
-
-
-@entrypoint()
-def joke_agent(state):
-    joke = generate_joke(state['messages']).result()
-    messages = add_messages(state["messages"], [joke])
-    return {"messages": messages}
-
-
-joke_agent.name = "joke_agent"
-
-
-# Graph API - Agent 2 (Research Expert)
-def web_search(query: str) -> str:
-    """Search the web for information."""
-    return (
-        "Here are the headcounts for each of the FAANG companies in 2024:\n"
-        "1. **Facebook (Meta)**: 67,317 employees.\n"
-        "2. **Apple**: 164,000 employees.\n"
-        "3. **Amazon**: 1,551,000 employees.\n"
-        "4. **Netflix**: 14,000 employees.\n"
-        "5. **Google (Alphabet)**: 181,269 employees."
-    )
-
-
-research_agent = create_react_agent(
-    model=model,
-    tools=[web_search],
-    name="research_expert",
-    prompt="You are a world class researcher with access to web search. Do not do any math."
-)
-
-# Create supervisor workflow
-workflow = create_supervisor(
-    [research_agent, joke_agent],
-    model=model,
-    prompt=(
-        "You are a team supervisor managing a research expert and a joke expert. "
-        "For current events, use research_agent. "
-        "For any jokes, use joke_agent."
-    )
-)
-
-# Compile and run
-app = workflow.compile()
-result = app.invoke({
-    "messages": [
-        {
-            "role": "user",
-            "content": "Share a joke to relax and start vibe coding for my next project idea."
-        }
-    ]
-})
-
-for m in result["messages"]:
-    m.pretty_print()
-```
-## Frontend (Generative UI)
-
-The `frontend/` directory contains a React application (Create React App) that follows the [LangGraph Generative UI tutorial](https://github.langchain.ac.cn/langgraphjs/cloud/how-tos/generative_ui_react/) and connects to the supervisor graph defined in `whats_eat/app/run.py`.
-
-1. Copy the template environment file:
-
-   ```bash
-   cd frontend
-   cp .env.example .env
-   ```
-
-2. Start the LangGraph backend (from the repository root):
+1. Export or define the required environment variables (see above) in `.env.json` or `.env`.
+2. Start the LangGraph development server:
 
    ```bash
    uv run langgraph dev
    ```
 
-3. Install frontend dependencies and launch the dev server:
+   The CLI reads `langgraph.json` to locate the compiled app in `whats_eat/app/run.py` and host it on
+   `http://localhost:2024` by default.
+3. Interact with the graph via the LangGraph UI, SDK, or HTTP API to drive the recommendation workflow.
 
-   ```bash
-   pnpm install
-   pnpm start
-   ```
+If you only need the compiled graph for deployment, import `build_app()` and serve the resulting
+`StateGraph` in your preferred hosting environment.
 
-   Update `.env` to point to your backend: `REACT_APP_LANGGRAPH_API_URL` defaults to `http://localhost:2024`. For LangGraph Cloud deployments, configure `REACT_APP_LANGGRAPH_API_URL`, `REACT_APP_LANGGRAPH_API_KEY`, and `REACT_APP_LANGGRAPH_GRAPH_ID` as needed.
+## Sample data
 
-The frontend renders supervisor responses, including structured recommendation cards emitted by the backend agents.
+The `examples/` folder provides ready-made payloads for smoke testing individual agents or seeding the RAG pipeline.
+Pair `place_test.json` with `user_profile_example.json` to emulate the supervisor’s `(json1, json2)` handoff, or compare
+your UI renderer with `summarizer_output.json` to validate formatting.
+
+## Troubleshooting tips
+
+- Missing API keys raise descriptive `RuntimeError`s—check the `.env` loader order if overrides do not apply.
+- Pinecone SDK mismatches (legacy vs. new client) surface actionable guidance from the RAG tools; uninstall the legacy
+  `pinecone-client` if you see compatibility errors.
+- When experimenting with new agents, ensure you compile them with explicit names; the supervisor validates uniqueness
+  before building the graph.
+
+Happy routing!
+
