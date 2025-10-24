@@ -573,11 +573,11 @@ __all__ = [
 ]
 
 # === Interactive OAuth bootstrap (optional, run-once helper) ==================
-# 安全起见，不在工具调用时自动触发浏览器授权；仅在你显式调用时执行。
+# For safety, do not trigger browser OAuth during tool calls; only run when explicitly invoked.
 import pathlib
 import json
 
-CLIENT_SECRET_ENV = "YOUTUBE_CLIENT_SECRET_PATH"  # 可自定义 client_secret.json 路径
+CLIENT_SECRET_ENV = "YOUTUBE_CLIENT_SECRET_PATH"  # Optional override path for client_secret.json
 DEFAULT_CLIENT_SECRET = "whats_eat/configuration/client_secret.json"
 
 
@@ -587,41 +587,41 @@ def _client_secret_path() -> str:
 
 def init_user_token(scopes: Optional[Sequence[str]] = None, client_secret_path: Optional[str] = None) -> str:
     """
-    交互式生成/修复当前用户的 token 文件。
-    - 默认只读 YouTube，并自动追加 openid + userinfo.email 以获取邮箱
-    - 若设置了 YOUTUBE_TOKEN_PATH 且不是默认 token.json，则优先写到该路径
-    - 否则写到 users/whatseat/data/tokens/<email>.json
-    返回写入的 token 绝对路径字符串
+    Interactively generate/repair the current user's token file.
+    - Defaults to YouTube read-only; automatically adds openid + userinfo.email to get email
+    - If YOUTUBE_TOKEN_PATH is set and not the default token.json, write to that path
+    - Otherwise write to users/whatseat/data/tokens/<email>.json
+    Returns the absolute path string of the token file written
     """
-    from google_auth_oauthlib.flow import InstalledAppFlow  # 仅此函数需要
+    from google_auth_oauthlib.flow import InstalledAppFlow  # Only this import is needed here
 
-    # 1) 作用域：在现有 _load_scopes() 基础上追加获取邮箱所需的 scopes
-    base_scopes = list(_load_scopes())  # 通常是 ["https://www.googleapis.com/auth/youtube.readonly"]
+    # 1) Scopes: append scopes needed to fetch email to those from _load_scopes()
+    base_scopes = list(_load_scopes())  # usually is ["https://www.googleapis.com/auth/youtube.readonly"]
     extra_scopes = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
-    req_scopes = tuple(dict.fromkeys((scopes or (base_scopes + extra_scopes))))  # 去重保序
+    req_scopes = tuple(dict.fromkeys((scopes or (base_scopes + extra_scopes))))  # de-duplicate while keeping order
 
-    # 2) 读取 client_secret.json
+    # 2) Load client_secret.json
     cs_path = client_secret_path or _client_secret_path()
     if not os.path.exists(cs_path):
         raise FileNotFoundError(f"client_secret.json not found at: {cs_path}")
 
-    # 3) 本地授权（浏览器回跳）
+    # 3) Local authorization (browser redirect callback)
     flow = InstalledAppFlow.from_client_secrets_file(cs_path, list(req_scopes))
     creds = flow.run_local_server(port=0, prompt="consent")
 
-    # 4) 读取授权用户邮箱（失败时容错）
+    # 4) Fetch authorized user's email (tolerate failure)
     email: Optional[str] = None
     try:
         from googleapiclient.discovery import build as _gbuild
         oauth2 = _gbuild("oauth2", "v2", credentials=creds, cache_discovery=False)
-        info = oauth2.userinfo().get().execute()  # 需要 userinfo.email
+        info = oauth2.userinfo().get().execute()  # requires userinfo.email
         email = (info.get("email") or "").strip().lower() or None
     except Exception:
-        email = None  # 邮箱拿不到也不影响后续写文件
+        email = None  # Not having email does not block writing token file
 
-    # 5) 决定 token 写入路径
-    #    - 若显式设置了 YOUTUBE_TOKEN_PATH 且不是默认 token.json，则用其值
-    #    - 否则自动写到 users/whatseat/data/tokens/<email>.json（拿不到邮箱就回退到默认 _token_path()）
+    # 5) Decide token write path
+    #    - If YOUTUBE_TOKEN_PATH is explicitly set and not default token.json, use it
+    #    - Else write to users/whatseat/data/tokens/<email>.json (fall back to default _token_path() if no email)
     explicit = os.getenv(TOKEN_ENV)  # YOUTUBE_TOKEN_PATH
     if explicit and explicit not in ("", "token.json"):
         token_path = pathlib.Path(explicit)
@@ -636,10 +636,10 @@ def init_user_token(scopes: Optional[Sequence[str]] = None, client_secret_path: 
             token_path = pathlib.Path(_token_path())
             token_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # 6) 写入 token
+    # 6) Write token
     token_path.write_text(creds.to_json(), encoding="utf-8")
 
-    # 7) 简查并提示
+    # 7) Quick check and print
     data = json.loads(token_path.read_text(encoding="utf-8"))
     if not bool(data.get("refresh_token")):
         print("WARN: No refresh_token in token file. Revoke previous grant and re-run if needed.")
@@ -648,7 +648,7 @@ def init_user_token(scopes: Optional[Sequence[str]] = None, client_secret_path: 
 
 
 
-# --- 小型 CLI：python -m whats_eat.tools.user_profile --init-token ---
+# --- Small CLI: python -m whats_eat.tools.user_profile --init-token ---
 if __name__ == "__main__":
     import argparse
 
