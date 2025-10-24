@@ -6,7 +6,7 @@ import { useLocation } from "./hooks/use_location";
 
 function Header() {
   const handleLogoClick = useCallback(() => {
-    window.open("https://github.com/langchain-ai/langgraph", "_blank", "noreferrer");
+    window.open("https://github.com/NUS-AIS-Practice-Modules/IRS-PM-2025-08-30-IS02PT-GRP-NeverStopCoding-WhatsEat", "_blank", "noreferrer");
   }, []);
 
   return (
